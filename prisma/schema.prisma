@@ -1,0 +1,81 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model Account {
+  id           Int    @id @default(autoincrement())
+  service_name String
+  combo        String
+
+  @@index([service_name])
+}
+
+model User {
+  user_id               String    @id
+  username              String?
+  avatar                String?
+  last_time_genned      String?
+  amount_genned         Int       @default(0)
+  prem_amount_genned    Int       @default(0)
+  is_blacklisted        Boolean   @default(false)
+  custom_cooldown       String    @default("{}")
+  user_cooldown         String    @default("{}")
+  subscription_time_left Float?
+  subscription_stage    String    @default("Free")
+  notes                 String?
+  created_at            DateTime  @default(now())
+
+  generation_history GenerationHistory[]
+  giveaway_entries   GiveawayEntry[]
+}
+
+model GenerationHistory {
+  id           Int      @id @default(autoincrement())
+  user_id      String
+  service_name String
+  combo        String
+  is_premium   Boolean  @default(false)
+  generated_at DateTime @default(now())
+
+  user User @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
+}
+
+model Giveaway {
+  id            Int            @id @default(autoincrement())
+  title         String
+  description   String?
+  service_name  String
+  account_count Int            @default(1)
+  is_premium    Boolean        @default(false)
+  created_at    DateTime       @default(now())
+  ends_at       DateTime
+  is_active     Boolean        @default(true)
+  winner_ids    String?
+
+  entries GiveawayEntry[]
+}
+
+model GiveawayEntry {
+  id          Int      @id @default(autoincrement())
+  giveaway_id Int
+  user_id     String
+  entered_at  DateTime @default(now())
+
+  giveaway Giveaway @relation(fields: [giveaway_id], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
+
+  @@unique([giveaway_id, user_id])
+}
+
+model ServiceConfig {
+  id           Int     @id @default(autoincrement())
+  name         String  @unique
+  display_name String?
+  icon_url     String?
+  is_active    Boolean @default(true)
+}
