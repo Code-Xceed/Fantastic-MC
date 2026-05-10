@@ -22,7 +22,7 @@ interface ServiceStock {
   premiumStock: number;
 }
 
-const isDemo = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
+const isDemo = process.env.NEXT_PUBLIC_DEMO_MODE !== "false"; // default: demo mode ON
 
 export default function Home() {
   const { data: session } = useSession();

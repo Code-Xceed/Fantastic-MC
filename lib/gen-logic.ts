@@ -23,13 +23,9 @@ function getDefaultCooldown(isPremium: boolean): number {
   return parseInt(val || "600", 10);
 }
 
-function parseCooldown(raw: string | null | undefined): Record<string, string | null> {
+function parseCooldown(raw: Record<string, string | null> | null): Record<string, string | null> {
   if (!raw) return {};
-  try {
-    return JSON.parse(raw as string);
-  } catch {
-    return {};
-  }
+  return raw;
 }
 
 export async function generateAccount(
@@ -79,7 +75,7 @@ export async function generateAccount(
 
   // 5. Cooldown check
   const tier = isPremium ? "Premium" : "Free";
-  const cooldownData = parseCooldown(user.user_cooldown);
+  const cooldownData = parseCooldown(user.user_cooldown as unknown as Record<string, string | null> | null);
   const cooldownEnd = cooldownData[tier];
 
   if (cooldownEnd) {
@@ -98,9 +94,9 @@ export async function generateAccount(
   // 6. Fetch random account
   const serviceName = isPremium ? `${service}_premium` : `${service}_free`;
 
-  // SQLite: use ORDER BY RANDOM()
+  // PostgreSQL: use ORDER BY RANDOM()
   const randomAccounts = await db.$queryRaw<Array<{ id: number; combo: string }>>`
-    SELECT id, combo FROM Account WHERE service_name = ${serviceName.toLowerCase()} ORDER BY RANDOM() LIMIT 1
+    SELECT id, combo FROM "Account" WHERE service_name = ${serviceName.toLowerCase()} ORDER BY RANDOM() LIMIT 1
   `;
 
   if (randomAccounts.length === 0) {
@@ -125,12 +121,12 @@ export async function generateAccount(
   // 8. Update user stats
   const now = Date.now() / 1000;
   const roleCooldown = getRoleCooldown(userRoles, isPremium);
-  const customCooldownData = parseCooldown(user.custom_cooldown);
+  const customCooldownData = parseCooldown(user.custom_cooldown as unknown as Record<string, string | null> | null);
   const customCooldown = customCooldownData[tier];
   const cooldownSeconds = customCooldown != null ? Number(customCooldown) : roleCooldown;
 
-  const updatedCooldown = {
-    ...parseCooldown(user.user_cooldown),
+  const updatedCooldown: Record<string, string | null> = {
+    ...parseCooldown(user.user_cooldown as unknown as Record<string, string | null> | null),
     [tier]: String(Math.floor(now + cooldownSeconds)),
   };
 
@@ -140,7 +136,7 @@ export async function generateAccount(
       amount_genned: isPremium ? user.amount_genned : user.amount_genned + 1,
       prem_amount_genned: isPremium ? user.prem_amount_genned + 1 : user.prem_amount_genned,
       last_time_genned: String(now),
-      user_cooldown: JSON.stringify(updatedCooldown),
+      user_cooldown: updatedCooldown,
     },
   });
 

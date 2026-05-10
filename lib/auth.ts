@@ -14,7 +14,7 @@ declare module "next-auth" {
   }
 }
 
-const isDemo = process.env.DEMO_MODE === "true";
+const isDemo = process.env.DEMO_MODE !== "false"; // default: demo mode ON
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   providers: isDemo

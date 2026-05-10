@@ -15,12 +15,12 @@ export async function POST(req: Request) {
       const user = await db.user.findUnique({ where: { user_id: userId } });
       if (!user) return NextResponse.json({ error: "User not found" }, { status: 404 });
 
-      const cooldowns = JSON.parse((user.custom_cooldown as string) || "{}");
+      const cooldowns = (user.custom_cooldown || {}) as Record<string, number | null>;
       cooldowns[stage] = timeSec;
 
       await db.user.update({
         where: { user_id: userId },
-        data: { custom_cooldown: JSON.stringify(cooldowns) },
+        data: { custom_cooldown: cooldowns },
       });
       return NextResponse.json({ success: true });
     }
@@ -29,12 +29,12 @@ export async function POST(req: Request) {
       const user = await db.user.findUnique({ where: { user_id: userId } });
       if (!user) return NextResponse.json({ error: "User not found" }, { status: 404 });
 
-      const cooldowns = JSON.parse((user.user_cooldown as string) || "{}");
+      const cooldowns = (user.user_cooldown || {}) as Record<string, string | null>;
       cooldowns[stage] = null;
 
       await db.user.update({
         where: { user_id: userId },
-        data: { user_cooldown: JSON.stringify(cooldowns) },
+        data: { user_cooldown: cooldowns },
       });
       return NextResponse.json({ success: true });
     }

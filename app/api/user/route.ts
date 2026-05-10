@@ -22,9 +22,9 @@ export async function GET() {
 
     // Check active cooldowns
     const now = Date.now() / 1000;
-    const cooldownData = JSON.parse(user.user_cooldown as string || "{}");
-    const freeCooldownEnd = cooldownData.Free ? parseFloat(cooldownData.Free) : 0;
-    const premiumCooldownEnd = cooldownData.Premium ? parseFloat(cooldownData.Premium) : 0;
+    const cooldownData = user.user_cooldown as Record<string, string | null> | null;
+    const freeCooldownEnd = cooldownData?.Free ? parseFloat(cooldownData.Free) : 0;
+    const premiumCooldownEnd = cooldownData?.Premium ? parseFloat(cooldownData.Premium) : 0;
 
     const freeCooldownRemaining = freeCooldownEnd > now ? Math.ceil(freeCooldownEnd - now) : 0;
     const premiumCooldownRemaining = premiumCooldownEnd > now ? Math.ceil(premiumCooldownEnd - now) : 0;
