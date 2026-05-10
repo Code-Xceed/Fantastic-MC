@@ -16,7 +16,15 @@ declare module "next-auth" {
 
 const isDemo = process.env.DEMO_MODE !== "false"; // default: demo mode ON
 
+// Ensure NEXTAUTH_SECRET exists (required by AuthJS for JWT signing)
+if (!process.env.NEXTAUTH_SECRET) {
+  process.env.NEXTAUTH_SECRET = isDemo
+    ? "demo-secret-do-not-use-in-production"
+    : "";
+}
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
+  trustHost: true,
   providers: isDemo
     ? [
         Credentials({
