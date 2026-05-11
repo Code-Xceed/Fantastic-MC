@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { AdSlot } from "@/components/AdSlot";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
+import { GiveawayWinPopup } from "@/components/GiveawayWinPopup";
 import { formatCooldown } from "@/lib/gen-logic";
 import {
   User,
@@ -14,6 +15,7 @@ import {
   Crown,
   Clock,
   History,
+  Trophy,
 } from "lucide-react";
 
 interface UserData {
@@ -36,6 +38,8 @@ interface HistoryItem {
   service: string;
   combo: string;
   isPremium: boolean;
+  source: string;
+  giveawayId: number | null;
   generatedAt: string;
 }
 
@@ -168,7 +172,7 @@ export default function DashboardPage() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <History className="h-5 w-5" />
-            Recent Generations
+            Recent Activity
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -177,25 +181,42 @@ export default function DashboardPage() {
           ) : (
             <div className="space-y-2">
               {recentHistory.map((h) => (
-                <div key={h.id} className="flex items-center justify-between rounded-lg border p-3">
-                  <div>
-                    <p className="text-sm font-medium">{h.service}</p>
-                    <p className="text-xs text-muted-foreground font-mono">{h.combo}</p>
+                <div key={h.id} className="flex items-center gap-3 rounded-lg border p-3">
+                  <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
+                    h.source === "giveaway" ? "bg-yellow-500/10" : "bg-primary/10"
+                  }`}>
+                    {h.source === "giveaway" ? (
+                      <Trophy className="h-4 w-4 text-yellow-500" />
+                    ) : (
+                      <Zap className="h-4 w-4 text-primary" />
+                    )}
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Badge variant={h.isPremium ? "default" : "secondary"}>
-                      {h.isPremium ? "Premium" : "Free"}
-                    </Badge>
-                    <span className="text-xs text-muted-foreground">
-                      {new Date(h.generatedAt).toLocaleDateString()}
-                    </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-medium">{h.service}</p>
+                      <Badge variant={h.isPremium ? "default" : "secondary"} className="text-[10px] px-1.5">
+                        {h.isPremium ? "Premium" : "Free"}
+                      </Badge>
+                      {h.source === "giveaway" && (
+                        <Badge variant="outline" className="text-[10px] px-1.5 border-yellow-500/30 text-yellow-600">
+                          <Trophy className="mr-0.5 h-2.5 w-2.5" /> Won
+                        </Badge>
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground font-mono truncate">{h.combo}</p>
                   </div>
+                  <span className="text-xs text-muted-foreground whitespace-nowrap">
+                    {new Date(h.generatedAt).toLocaleDateString()}
+                  </span>
                 </div>
               ))}
             </div>
           )}
         </CardContent>
       </Card>
+
+      {/* Giveaway win popup */}
+      <GiveawayWinPopup />
     </div>
   );
 }

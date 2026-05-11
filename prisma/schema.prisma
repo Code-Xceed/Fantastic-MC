@@ -36,6 +36,7 @@ model User {
   giveaway_entries    GiveawayEntry[]
   pending_generations PendingGeneration[]
   ad_impressions     AdImpression[]
+  giveaway_wins      GiveawayWin[]
 }
 
 model GenerationHistory {
@@ -44,9 +45,14 @@ model GenerationHistory {
   service_name String
   combo        String
   is_premium   Boolean  @default(false)
+  source       String   @default("generation") // generation | giveaway
+  giveaway_id  Int?
   generated_at DateTime @default(now())
 
   user User @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
+
+  @@index([user_id])
+  @@index([source])
 }
 
 model Giveaway {
@@ -120,4 +126,21 @@ model SiteSettings {
   key        String   @unique
   value      String
   updated_at DateTime @updatedAt
+}
+
+model GiveawayWin {
+  id           Int      @id @default(autoincrement())
+  user_id      String
+  giveaway_id  Int
+  title        String
+  service_name String
+  combo        String
+  is_premium   Boolean  @default(false)
+  is_read      Boolean  @default(false)
+  created_at   DateTime @default(now())
+
+  user User @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
+
+  @@index([user_id, is_read])
+  @@index([created_at])
 }

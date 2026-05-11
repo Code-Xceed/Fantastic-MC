@@ -53,7 +53,7 @@ export async function POST(req: Request) {
       }, { status: 400 });
     }
 
-    // Assign accounts to winners and record in history
+    // Assign accounts to winners and record in history + create win notifications
     for (let i = 0; i < winnerCount; i++) {
       const account = accounts[i];
       const winnerId = winnerIds[i];
@@ -63,6 +63,20 @@ export async function POST(req: Request) {
       await db.generationHistory.create({
         data: {
           user_id: winnerId,
+          service_name: giveaway.service_name,
+          combo: account.combo,
+          is_premium: giveaway.is_premium,
+          source: "giveaway",
+          giveaway_id: giveawayId,
+        },
+      });
+
+      // Create win notification for the user
+      await db.giveawayWin.create({
+        data: {
+          user_id: winnerId,
+          giveaway_id: giveawayId,
+          title: giveaway.title,
           service_name: giveaway.service_name,
           combo: account.combo,
           is_premium: giveaway.is_premium,

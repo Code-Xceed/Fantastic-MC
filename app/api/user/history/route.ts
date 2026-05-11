@@ -33,6 +33,8 @@ export async function GET(req: Request) {
         service: h.service_name,
         combo: maskCombo(h.combo),
         isPremium: h.is_premium,
+        source: h.source,
+        giveawayId: h.giveaway_id,
         generatedAt: h.generated_at,
       })),
       total,

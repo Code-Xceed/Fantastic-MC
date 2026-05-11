@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { AdSlot } from "@/components/AdSlot";
+import { GiveawayWinPopup } from "@/components/GiveawayWinPopup";
 import {
   Gamepad2,
   Zap,
@@ -44,6 +45,7 @@ export default function Home() {
           <Button onClick={() => window.location.href = "/dashboard"}>Dashboard</Button>
           <Button variant="outline" onClick={() => window.location.href = "/services"}>Generate</Button>
         </div>
+        <GiveawayWinPopup />
       </div>
     );
   }
