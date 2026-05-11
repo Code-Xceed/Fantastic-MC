@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { AdSlot } from "@/components/AdSlot";
+import { LoadingSpinner } from "@/components/LoadingSpinner";
 import { formatCooldown } from "@/lib/gen-logic";
 import {
   User,
@@ -58,7 +59,7 @@ export default function DashboardPage() {
   }, [session]);
 
   if (status === "loading") {
-    return <div className="flex items-center justify-center py-20">Loading...</div>;
+    return <LoadingSpinner className="py-20" text="Loading dashboard..." />;
   }
 
   if (!session) {

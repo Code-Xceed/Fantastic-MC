@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { AdSlot } from "@/components/AdSlot";
+import { LoadingSpinner } from "@/components/LoadingSpinner";
 import { History, ChevronLeft, ChevronRight } from "lucide-react";
 
 interface HistoryItem {
@@ -35,7 +36,7 @@ export default function HistoryPage() {
   }, [session, page]);
 
   if (status === "loading") {
-    return <div className="flex items-center justify-center py-20">Loading...</div>;
+    return <LoadingSpinner className="py-20" text="Loading history..." />;
   }
 
   if (!session) {

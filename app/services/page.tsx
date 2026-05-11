@@ -1,14 +1,16 @@
 "use client";
 
 import { useSession } from "next-auth/react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AdSlot } from "@/components/AdSlot";
+import { AdOverlay } from "@/components/AdOverlay";
+import { LoadingSpinner } from "@/components/LoadingSpinner";
 import { formatCooldown } from "@/lib/gen-logic";
-import { Server, Zap, Crown, Copy, Check } from "lucide-react";
+import { Server, Zap, Crown, Copy, Check, Tv } from "lucide-react";
 import { toast } from "sonner";
 
 interface ServiceStock {
@@ -27,11 +29,15 @@ interface UserData {
   isBlacklisted: boolean;
 }
 
+type GenState = "idle" | "generating" | "watching_ad" | "claiming" | "done";
+
 export default function ServicesPage() {
   const { data: session, status } = useSession();
   const [services, setServices] = useState<ServiceStock[]>([]);
   const [userData, setUserData] = useState<UserData | null>(null);
-  const [generating, setGenerating] = useState<string | null>(null);
+  const [genState, setGenState] = useState<GenState>("idle");
+  const [activeService, setActiveService] = useState<string | null>(null);
+  const [claimToken, setClaimToken] = useState<string | null>(null);
   const [result, setResult] = useState<{ service: string; account: string; isPremium: boolean } | null>(null);
   const [copied, setCopied] = useState(false);
 
@@ -49,9 +55,15 @@ export default function ServicesPage() {
     }
   }, [session]);
 
+  const refreshData = useCallback(() => {
+    fetch("/api/user").then((r) => r.json()).then((d) => setUserData(d.user));
+    fetch("/api/services").then((r) => r.json()).then((d) => setServices(d.services || []));
+  }, []);
+
   const handleGenerate = async (service: string, isPremium: boolean) => {
     if (!session) return;
-    setGenerating(service);
+    setActiveService(service);
+    setGenState("generating");
 
     try {
       const res = await fetch("/api/generate", {
@@ -64,23 +76,59 @@ export default function ServicesPage() {
 
       if (!res.ok) {
         toast.error(data.error || "Generation failed");
-        // Refresh user data to get updated cooldowns
-        fetch("/api/user").then((r) => r.json()).then((d) => setUserData(d.user));
+        setGenState("idle");
+        refreshData();
         return;
       }
 
-      setResult({ service, account: data.account, isPremium });
-      toast.success("Account generated! Check the dialog.");
-
-      // Refresh user data
-      fetch("/api/user").then((r) => r.json()).then((d) => setUserData(d.user));
-      fetch("/api/services").then((r) => r.json()).then((d) => setServices(d.services || []));
+      if (data.requiresAd) {
+        // Free user: show ad overlay
+        setClaimToken(data.token);
+        setGenState("watching_ad");
+      } else {
+        // Premium/admin: got account immediately
+        setResult({ service, account: data.account, isPremium });
+        setGenState("done");
+        toast.success("Account generated!");
+        refreshData();
+      }
     } catch {
       toast.error("Something went wrong");
-    } finally {
-      setGenerating(null);
+      setGenState("idle");
     }
   };
+
+  const handleAdComplete = useCallback(async () => {
+    if (!claimToken) return;
+    setGenState("claiming");
+
+    try {
+      const res = await fetch("/api/generate/claim", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: claimToken }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        toast.error(data.error || "Failed to claim account");
+        setGenState("idle");
+        setClaimToken(null);
+        return;
+      }
+
+      setResult({ service: activeService || "", account: data.account, isPremium: false });
+      setGenState("done");
+      toast.success("Account generated!");
+      refreshData();
+    } catch {
+      toast.error("Failed to claim account");
+      setGenState("idle");
+    } finally {
+      setClaimToken(null);
+    }
+  }, [claimToken, activeService, refreshData]);
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
@@ -90,7 +138,7 @@ export default function ServicesPage() {
   };
 
   if (status === "loading") {
-    return <div className="flex items-center justify-center py-20">Loading...</div>;
+    return <LoadingSpinner className="py-20" text="Loading services..." />;
   }
 
   if (!session) {
@@ -101,118 +149,157 @@ export default function ServicesPage() {
     );
   }
 
+  const isPremiumOrAdmin = userData?.hasSubscription || session.isAdmin;
+
   return (
     <div className="space-y-6">
-      <div>
+      <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold flex items-center gap-2">
           <Server className="h-6 w-6" />
           Services
         </h1>
-        <p className="text-muted-foreground mt-1">
-          Select a service and generate an account. Cooldowns apply after each generation.
-        </p>
+        {!isPremiumOrAdmin && (
+          <Badge variant="outline" className="text-xs">
+            <Tv className="mr-1 h-3 w-3" />
+            Free users watch a 30s ad
+          </Badge>
+        )}
       </div>
 
       <AdSlot format="banner" />
 
+      {/* Services grid */}
       {services.length === 0 ? (
         <Card>
-          <CardContent className="p-8 text-center text-muted-foreground">
+          <CardContent className="p-6 text-center text-muted-foreground">
             No services available yet. Check back later!
           </CardContent>
         </Card>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {services.map((svc) => (
-            <Card key={svc.name} className="border-border/50">
+          {services.map((s) => (
+            <Card key={s.name} className="border-border/50">
               <CardContent className="p-5 space-y-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="font-semibold text-lg">{svc.displayName}</h3>
-                  {svc.iconUrl && (
-                    <img src={svc.iconUrl} alt={svc.displayName} className="h-8 w-8 rounded" />
+                <div className="flex items-center gap-3">
+                  {s.iconUrl ? (
+                    <img src={s.iconUrl} alt={s.displayName} className="h-10 w-10 rounded" />
+                  ) : (
+                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
+                      <Server className="h-5 w-5 text-primary" />
+                    </div>
+                  )}
+                  <div>
+                    <p className="font-semibold">{s.displayName}</p>
+                    <div className="flex gap-2 mt-1">
+                      <Badge variant="secondary" className="text-xs">
+                        <Zap className="mr-1 h-3 w-3" />
+                        Free: {s.freeStock}
+                      </Badge>
+                      <Badge className="text-xs">
+                        <Crown className="mr-1 h-3 w-3" />
+                        Premium: {s.premiumStock}
+                      </Badge>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Button
+                    className="w-full"
+                    disabled={
+                      genState !== "idle" ||
+                      s.freeStock === 0 ||
+                      (userData?.freeCooldownRemaining ?? 0) > 0
+                    }
+                    onClick={() => handleGenerate(s.name, false)}
+                  >
+                    {isPremiumOrAdmin ? (
+                      <><Zap className="mr-2 h-4 w-4" /> Generate Free</>
+                    ) : (
+                      <><Tv className="mr-2 h-4 w-4" /> Watch Ad & Generate</>
+                    )}
+                  </Button>
+
+                  {(userData?.freeCooldownRemaining ?? 0) > 0 && (
+                    <p className="text-xs text-muted-foreground">
+                      Free cooldown: {formatCooldown(userData?.freeCooldownRemaining ?? 0)}
+                    </p>
+                  )}
+
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    disabled={
+                      genState !== "idle" ||
+                      s.premiumStock === 0 ||
+                      !userData?.hasSubscription ||
+                      (userData?.premiumCooldownRemaining ?? 0) > 0
+                    }
+                    onClick={() => handleGenerate(s.name, true)}
+                  >
+                    <Crown className="mr-2 h-4 w-4" /> Generate Premium
+                  </Button>
+
+                  {(userData?.premiumCooldownRemaining ?? 0) > 0 && userData?.hasSubscription && (
+                    <p className="text-xs text-muted-foreground">
+                      Premium cooldown: {formatCooldown(userData?.premiumCooldownRemaining ?? 0)}
+                    </p>
                   )}
                 </div>
-
-                <div className="flex gap-2">
-                  <Badge variant="secondary" className="flex items-center gap-1">
-                    <Zap className="h-3 w-3" /> Free: {svc.freeStock}
-                  </Badge>
-                  <Badge className="flex items-center gap-1">
-                    <Crown className="h-3 w-3" /> Premium: {svc.premiumStock}
-                  </Badge>
-                </div>
-
-                <div className="flex gap-2">
-                  <Button
-                    size="sm"
-                    className="flex-1"
-                    disabled={
-                      svc.freeStock === 0 ||
-                      !!generating ||
-                      (userData?.freeCooldownRemaining || 0) > 0
-                    }
-                    onClick={() => handleGenerate(svc.name, false)}
-                  >
-                    {generating === svc.name ? "Generating..." : "Free Gen"}
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="flex-1"
-                    disabled={
-                      svc.premiumStock === 0 ||
-                      !!generating ||
-                      !userData?.hasSubscription ||
-                      (userData?.premiumCooldownRemaining || 0) > 0
-                    }
-                    onClick={() => handleGenerate(svc.name, true)}
-                  >
-                    {generating === svc.name ? "Generating..." : "Premium Gen"}
-                  </Button>
-                </div>
-
-                {(userData?.freeCooldownRemaining ?? 0) > 0 && (
-                  <p className="text-xs text-muted-foreground">
-                    Free cooldown: {formatCooldown(userData?.freeCooldownRemaining ?? 0)}
-                  </p>
-                )}
-                {(userData?.premiumCooldownRemaining ?? 0) > 0 && userData?.hasSubscription && (
-                  <p className="text-xs text-muted-foreground">
-                    Premium cooldown: {formatCooldown(userData?.premiumCooldownRemaining ?? 0)}
-                  </p>
-                )}
               </CardContent>
             </Card>
           ))}
         </div>
       )}
 
-      {/* Result dialog */}
-      <Dialog open={!!result} onOpenChange={() => setResult(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>
-              Account Generated — {result?.service}
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <Badge variant={result?.isPremium ? "default" : "secondary"}>
-              {result?.isPremium ? "Premium" : "Free"}
-            </Badge>
-            <div className="rounded-lg bg-muted p-4 font-mono text-sm break-all">
-              {result?.account}
-            </div>
-            <Button
-              className="w-full"
-              onClick={() => result && copyToClipboard(result.account)}
-            >
-              {copied ? <Check className="mr-2 h-4 w-4" /> : <Copy className="mr-2 h-4 w-4" />}
-              {copied ? "Copied!" : "Copy to Clipboard"}
-            </Button>
-            <p className="text-xs text-muted-foreground text-center">
-              Save this account — it won&apos;t be shown again.
-            </p>
+      {/* Ad overlay for free users */}
+      {genState === "watching_ad" && (
+        <AdOverlay
+          duration={30}
+          onComplete={handleAdComplete}
+          onSkip={() => {
+            setGenState("idle");
+            setClaimToken(null);
+            toast.error("Generation cancelled");
+          }}
+        />
+      )}
+
+      {/* Claiming spinner */}
+      {genState === "claiming" && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="flex flex-col items-center gap-3 text-white">
+            <div className="h-8 w-8 animate-spin rounded-full border-2 border-white border-t-transparent" />
+            <p>Claiming your account...</p>
           </div>
+        </div>
+      )}
+
+      {/* Result dialog */}
+      <Dialog open={genState === "done"} onOpenChange={(open) => { if (!open) { setGenState("idle"); setResult(null); } }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Account Generated!</DialogTitle>
+          </DialogHeader>
+          {result && (
+            <div className="space-y-4">
+              <div className="rounded-lg border bg-muted/50 p-4">
+                <p className="text-xs text-muted-foreground mb-1">
+                  {result.service} — {result.isPremium ? "Premium" : "Free"}
+                </p>
+                <p className="font-mono text-lg break-all">{result.account}</p>
+              </div>
+              <Button
+                className="w-full"
+                onClick={() => copyToClipboard(result.account)}
+              >
+                {copied ? <><Check className="mr-2 h-4 w-4" /> Copied!</> : <><Copy className="mr-2 h-4 w-4" /> Copy to Clipboard</>}
+              </Button>
+              <p className="text-xs text-center text-muted-foreground">
+                Save this account — it won&apos;t be shown again.
+              </p>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>

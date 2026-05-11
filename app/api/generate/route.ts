@@ -1,12 +1,22 @@
 import { auth } from "@/lib/auth";
-import { generateAccount } from "@/lib/gen-logic";
+import { reserveAccount } from "@/lib/gen-logic";
 import { db } from "@/lib/db";
+import { rateLimit } from "@/lib/rate-limit";
 import { NextResponse } from "next/server";
 
 export async function POST(req: Request) {
   const session = await auth();
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  }
+
+  // Rate limit: 10 generate requests per minute per user
+  const limit = rateLimit(`gen:${session.user.id}`, { windowMs: 60_000, maxRequests: 10 });
+  if (!limit.allowed) {
+    return NextResponse.json(
+      { error: "Rate limit exceeded. Please wait before generating again.", cooldownRemaining: Math.ceil((limit.resetAt - Date.now()) / 1000) },
+      { status: 429 }
+    );
   }
 
   try {
@@ -33,24 +43,28 @@ export async function POST(req: Request) {
           user_id: session.user.id,
           username: session.user.name,
           avatar: session.user.image,
+          is_admin: session.isAdmin,
         },
       });
     } else {
-      // Update username/avatar if changed
+      // Update username/avatar/admin status if changed
       await db.user.update({
         where: { user_id: session.user.id },
         data: {
           username: session.user.name,
           avatar: session.user.image,
+          is_admin: session.isAdmin,
         },
       });
     }
 
-    const result = await generateAccount(
+    const isAdmin = session.isAdmin || user.is_admin;
+    const result = await reserveAccount(
       session.user.id,
       service,
       isPremium || false,
-      session.roles || []
+      session.roles || [],
+      isAdmin
     );
 
     if (!result.success) {
@@ -60,7 +74,21 @@ export async function POST(req: Request) {
       );
     }
 
-    return NextResponse.json({ success: true, account: result.account });
+    // Premium/admin: return account immediately
+    if (!result.requiresAd) {
+      return NextResponse.json({
+        success: true,
+        account: result.account,
+        requiresAd: false,
+      });
+    }
+
+    // Free user: return token, they must watch ad then claim
+    return NextResponse.json({
+      success: true,
+      token: result.token,
+      requiresAd: true,
+    });
   } catch (error) {
     console.error("Generate error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Users, Package, Gift, Zap, AlertTriangle } from "lucide-react";
+import { LoadingSpinner } from "@/components/LoadingSpinner";
 
 interface OverviewData {
   totalUsers: number;
@@ -32,7 +33,7 @@ export default function AdminOverviewPage() {
   }, []);
 
   if (!data) {
-    return <div className="flex items-center justify-center py-20">Loading...</div>;
+    return <LoadingSpinner className="py-20" text="Loading admin overview..." />;
   }
 
   return (

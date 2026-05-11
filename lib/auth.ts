@@ -1,6 +1,5 @@
 import NextAuth from "next-auth";
 import Discord from "next-auth/providers/discord";
-import Credentials from "next-auth/providers/credentials";
 
 declare module "next-auth" {
   interface Session {
@@ -14,55 +13,25 @@ declare module "next-auth" {
   }
 }
 
-const isDemo = process.env.DEMO_MODE !== "false"; // default: demo mode ON
-
-// Ensure NEXTAUTH_SECRET exists (required by AuthJS for JWT signing)
+// Ensure NEXTAUTH_SECRET exists
 if (!process.env.NEXTAUTH_SECRET) {
-  process.env.NEXTAUTH_SECRET = isDemo
-    ? "demo-secret-do-not-use-in-production"
-    : "";
+  console.error("NEXTAUTH_SECRET is not set. Authentication will not work.");
 }
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   trustHost: true,
-  providers: isDemo
-    ? [
-        Credentials({
-          name: "Demo Login",
-          credentials: {
-            role: { label: "Role", type: "text", placeholder: "admin or user" },
-          },
-          async authorize(credentials) {
-            const role = (credentials?.role as string) || "user";
-            const isAdmin = role === "admin";
-            const userId = isAdmin ? "demo_admin_001" : "demo_user_001";
-            const username = isAdmin ? "DemoAdmin" : "DemoUser";
-
-            return {
-              id: userId,
-              name: username,
-              image: "",
-              isAdmin,
-              roles: isAdmin ? ["admin"] : [],
-            };
-          },
-        }),
-      ]
-    : [
-        Discord({
-          authorization:
-            "https://discord.com/api/oauth2/authorize?scope=identify+guilds+guilds.members.read",
-        }),
-      ],
+  providers: [
+    Discord({
+      authorization:
+        "https://discord.com/api/oauth2/authorize?scope=identify+guilds+guilds.members.read",
+    }),
+  ],
   pages: {
     error: "/",
     signIn: "/",
   },
   callbacks: {
-    async signIn({ user, account, profile }) {
-      // Demo mode: credentials provider, always allow
-      if (isDemo) return true;
-
+    async signIn({ user }) {
       const guildId = process.env.DISCORD_GUILD_ID;
       const botToken = process.env.DISCORD_BOT_TOKEN;
 

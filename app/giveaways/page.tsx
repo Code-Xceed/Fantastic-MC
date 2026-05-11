@@ -6,6 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { AdSlot } from "@/components/AdSlot";
+import { LoadingSpinner } from "@/components/LoadingSpinner";
 import { Gift, Clock, Users, Trophy } from "lucide-react";
 import { toast } from "sonner";
 
@@ -91,7 +92,7 @@ export default function GiveawaysPage() {
   };
 
   if (status === "loading") {
-    return <div className="flex items-center justify-center py-20">Loading...</div>;
+    return <LoadingSpinner className="py-20" text="Loading giveaways..." />;
   }
 
   return (

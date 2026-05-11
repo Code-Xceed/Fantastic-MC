@@ -20,6 +20,7 @@ model User {
   user_id               String    @id
   username              String?
   avatar                String?
+  is_admin              Boolean   @default(false)
   last_time_genned      String?
   amount_genned         Int       @default(0)
   prem_amount_genned    Int       @default(0)
@@ -31,8 +32,10 @@ model User {
   notes                 String?
   created_at            DateTime  @default(now())
 
-  generation_history GenerationHistory[]
-  giveaway_entries   GiveawayEntry[]
+  generation_history  GenerationHistory[]
+  giveaway_entries    GiveawayEntry[]
+  pending_generations PendingGeneration[]
+  ad_impressions     AdImpression[]
 }
 
 model GenerationHistory {
@@ -79,4 +82,42 @@ model ServiceConfig {
   display_name String?
   icon_url     String?
   is_active    Boolean @default(true)
+}
+
+model PendingGeneration {
+  id           Int      @id @default(autoincrement())
+  token        String   @unique
+  user_id      String
+  service_name String
+  account_id   Int
+  is_premium   Boolean  @default(false)
+  created_at   DateTime @default(now())
+  expires_at   DateTime
+
+  user User @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
+
+  @@index([token])
+  @@index([expires_at])
+}
+
+model AdImpression {
+  id          Int      @id @default(autoincrement())
+  user_id     String
+  service_name String
+  provider    String   @default("propeller")
+  zone_id     String?
+  completed   Boolean  @default(false)
+  created_at  DateTime @default(now())
+
+  user User @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
+
+  @@index([user_id])
+  @@index([created_at])
+}
+
+model SiteSettings {
+  id         Int      @id @default(autoincrement())
+  key        String   @unique
+  value      String
+  updated_at DateTime @updatedAt
 }

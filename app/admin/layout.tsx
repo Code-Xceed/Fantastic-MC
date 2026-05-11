@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { Shield, BarChart3, Package, Users, Crown, Gift } from "lucide-react";
+import { Shield, BarChart3, Package, Users, Crown, Gift, Settings } from "lucide-react";
 
 const adminLinks = [
   { href: "/admin", label: "Overview", icon: BarChart3 },
@@ -11,6 +11,7 @@ const adminLinks = [
   { href: "/admin/users", label: "Users", icon: Users },
   { href: "/admin/subscriptions", label: "Subscriptions", icon: Crown },
   { href: "/admin/giveaways", label: "Giveaways", icon: Gift },
+  { href: "/admin/settings", label: "Settings", icon: Settings },
 ];
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {

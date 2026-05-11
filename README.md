@@ -1,17 +1,19 @@
-# FMC Gen — Free MC Account Generator Website
+# FMC Gen — Free MC Account Generator
 
-A Next.js web dashboard for distributing Minecraft alt accounts. Users authenticate via Discord OAuth (must be a server member), generate accounts from a web UI, and admins manage everything through a full admin panel.
+A production-grade Next.js web dashboard for distributing Minecraft alt accounts. Users authenticate via Discord OAuth (must be a server member), generate accounts from a web UI, and admins manage everything through a full admin panel. Free users watch a 30-second ad before each generation.
 
 ## Features
 
 - **Discord OAuth** — Users must be in your Discord server to login
-- **Account Generation** — One-click account generation with cooldown enforcement
+- **Account Generation** — Reserve/claim pattern with ad wall for free users
+- **Ad Monetization** — PropellerAds integration; free users watch 30s ad, premium/admin skip
 - **Free & Premium Tiers** — Separate stock pools, different cooldowns
 - **Subscription System** — Time-based premium access managed by admins
 - **Generation History** — Full tracking of which account went to whom
 - **Giveaways** — Create giveaways, users enter, admins draw winners
-- **Admin Panel** — Manage stock, users, subscriptions, giveaways
-- **Ad Slots** — Configurable ad banner placeholders
+- **Admin Panel** — Manage stock, users, subscriptions, giveaways, site settings
+- **Site Settings** — Configure ad duration, maintenance mode, site name from admin UI
+- **Health Check** — `/api/health` endpoint for monitoring
 - **Dark Mode** — Built-in dark theme
 
 ## Quick Start
@@ -27,7 +29,20 @@ A Next.js web dashboard for distributing Minecraft alt accounts. Users authentic
 7. Go to **OAuth2** → URL Generator → Select `bot` + `applications.commands`
 8. Invite the bot to your server
 
-### 2. Configure Environment
+### 2. Set up PropellerAds (for ad monetization)
+
+1. Sign up at [propellerads.com](https://propellerads.com)
+2. Create a new site and get approved
+3. Create an **Interstitial/Full-screen** ad zone → copy the Zone ID
+4. Create a **Native/Banner** ad zone → copy the Zone ID
+5. Add these to your `.env`:
+   ```
+   NEXT_PUBLIC_PROPELLER_ZONE_ID=your_interstitial_zone_id
+   NEXT_PUBLIC_PROPELLER_BANNER_ZONE_ID=your_banner_zone_id
+   NEXT_PUBLIC_AD_SLOT_ENABLED=true
+   ```
+
+### 3. Configure Environment
 
 Copy `.env.example` to `.env` and fill in:
 
@@ -41,7 +56,7 @@ NEXTAUTH_SECRET=openssl_rand_base64_32
 NEXTAUTH_URL=http://localhost:3000
 ```
 
-### 3. Set up Database
+### 4. Set up Database
 
 For **Vercel deployment**: Add Vercel Postgres storage to your project. The `POSTGRES_PRISMA_URL` and `POSTGRES_URL_NON_POOLING` will be set automatically.
 
@@ -53,7 +68,7 @@ Then run:
 npx prisma db push
 ```
 
-### 4. Install & Run
+### 5. Install & Run
 
 ```bash
 npm install
@@ -63,13 +78,13 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
-### 5. Deploy to Vercel
+### 6. Deploy to Vercel
 
 1. Push this repo to GitHub
 2. Import in [Vercel](https://vercel.com)
-3. Add Vercel Postgres storage
+3. Add Vercel Postgres storage (no prefix)
 4. Set all environment variables from `.env.example`
-5. Deploy
+5. Deploy — `prisma db push` runs automatically during build
 
 ## Project Structure
 
@@ -78,7 +93,7 @@ web/
 ├── app/
 │   ├── page.tsx                    # Landing page
 │   ├── dashboard/page.tsx          # User dashboard
-│   ├── services/page.tsx           # Generate accounts
+│   ├── services/page.tsx           # Generate accounts (with ad wall)
 │   ├── history/page.tsx            # Generation history
 │   ├── giveaways/page.tsx          # User giveaways
 │   ├── admin/                      # Admin panel
@@ -86,22 +101,36 @@ web/
 │   │   ├── stock/page.tsx          # Stock management
 │   │   ├── users/page.tsx          # User management
 │   │   ├── subscriptions/page.tsx  # Subscription management
-│   │   └── giveaways/page.tsx      # Giveaway management
+│   │   ├── giveaways/page.tsx      # Giveaway management
+│   │   └── settings/page.tsx       # Site settings
 │   └── api/                        # API routes
+│       ├── generate/               # Reserve & claim endpoints
+│       ├── health/                 # Health check
+│       └── settings/               # Site settings API
 ├── components/
 │   ├── ui/                         # shadcn/ui components
 │   ├── Navbar.tsx
-│   ├── AdSlot.tsx
+│   ├── AdSlot.tsx                  # Banner ad component
+│   ├── AdOverlay.tsx               # Full-screen ad overlay (30s)
 │   └── Providers.tsx
 ├── lib/
-│   ├── auth.ts                     # NextAuth config
+│   ├── auth.ts                     # NextAuth config (Discord only)
 │   ├── db.ts                       # Prisma client
-│   ├── gen-logic.ts                # Generation logic
+│   ├── gen-logic.ts                # Reserve/claim generation logic
 │   └── utils.ts                    # Utility functions
 ├── prisma/
 │   └── schema.prisma               # Database schema
 └── middleware.ts                   # Auth guard
 ```
+
+## How the Ad System Works
+
+1. **Free user** clicks "Watch Ad & Generate"
+2. Backend reserves an account and returns a **claim token**
+3. Frontend shows a **30-second ad overlay** (PropellerAds interstitial)
+4. After 30s, user clicks "Claim Your Account"
+5. Frontend sends the claim token → backend delivers the account
+6. **Premium users and admins** skip the ad entirely — instant generation
 
 ## Admin Guide
 
@@ -124,6 +153,10 @@ web/
 2. Users enter the giveaway on the Giveaways page
 3. When ready, click **Draw** to randomly pick winners and assign accounts
 
+### Site Settings
+
+- **Admin → Settings**: Configure ad duration, enable/disable ads, set site name, toggle maintenance mode
+
 ## Environment Variables
 
 | Variable | Description |
@@ -140,4 +173,6 @@ web/
 | `DEFAULT_FREE_COOLDOWN` | Default free cooldown in seconds (default: 600) |
 | `DEFAULT_PREMIUM_COOLDOWN` | Default premium cooldown in seconds (default: 60) |
 | `ROLE_CONFIG` | JSON array of role cooldown configs |
-| `AD_SLOT_ENABLED` | Enable ad slot placeholders (true/false) |
+| `NEXT_PUBLIC_PROPELLER_ZONE_ID` | PropellerAds interstitial zone ID |
+| `NEXT_PUBLIC_PROPELLER_BANNER_ZONE_ID` | PropellerAds banner zone ID |
+| `NEXT_PUBLIC_AD_SLOT_ENABLED` | Enable ad slots (true/false) |

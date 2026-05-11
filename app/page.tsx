@@ -22,8 +22,6 @@ interface ServiceStock {
   premiumStock: number;
 }
 
-const isDemo = process.env.NEXT_PUBLIC_DEMO_MODE !== "false"; // default: demo mode ON
-
 export default function Home() {
   const { data: session } = useSession();
   const [stock, setStock] = useState<ServiceStock[]>([]);
@@ -69,28 +67,15 @@ export default function Home() {
           Discord, pick a service, and generate — it&apos;s that simple.
         </p>
 
-        {isDemo ? (
-          <div className="mt-8 flex flex-col sm:flex-row gap-3">
-            <Button size="lg" onClick={() => signIn("credentials", { role: "admin", redirect: true, callbackUrl: "/dashboard" })}>
-              <Shield className="mr-2 h-5 w-5" />
-              Demo Admin Login
-            </Button>
-            <Button size="lg" variant="outline" onClick={() => signIn("credentials", { role: "user", redirect: true, callbackUrl: "/dashboard" })}>
-              <Users className="mr-2 h-5 w-5" />
-              Demo User Login
-            </Button>
-          </div>
-        ) : (
-          <div className="mt-8 flex flex-col sm:flex-row gap-3">
-            <Button size="lg" onClick={() => signIn("discord")}>
-              <Gamepad2 className="mr-2 h-5 w-5" />
-              Login with Discord
-            </Button>
-            <Button size="lg" variant="outline" onClick={() => document.getElementById("features")?.scrollIntoView({ behavior: "smooth" })}>
-              Learn More
-            </Button>
-          </div>
-        )}
+        <div className="mt-8 flex flex-col sm:flex-row gap-3">
+          <Button size="lg" onClick={() => signIn("discord")}>
+            <Gamepad2 className="mr-2 h-5 w-5" />
+            Login with Discord
+          </Button>
+          <Button size="lg" variant="outline" onClick={() => document.getElementById("features")?.scrollIntoView({ behavior: "smooth" })}>
+            Learn More
+          </Button>
+        </div>
 
         {totalStock > 0 && (
           <p className="mt-4 text-sm text-muted-foreground">
@@ -170,32 +155,17 @@ export default function Home() {
       <section className="flex flex-col items-center text-center py-12">
         <h2 className="text-3xl font-bold">Ready to get started?</h2>
         <p className="mt-2 text-muted-foreground max-w-md">
-          {isDemo
-            ? "Click Demo Admin or Demo User login above to explore the full site."
-            : "Join our Discord server and login to start generating accounts right away."}
+          Join our Discord server and login to start generating accounts right away.
         </p>
-        {isDemo ? (
-          <div className="mt-6 flex gap-3">
-            <Button size="lg" onClick={() => signIn("credentials", { role: "admin", redirect: true, callbackUrl: "/dashboard" })}>
-              <Shield className="mr-2 h-5 w-5" />
-              Demo Admin
-            </Button>
-            <Button size="lg" variant="outline" onClick={() => signIn("credentials", { role: "user", redirect: true, callbackUrl: "/dashboard" })}>
-              <Users className="mr-2 h-5 w-5" />
-              Demo User
-            </Button>
-          </div>
-        ) : (
-          <Button size="lg" className="mt-6" onClick={() => signIn("discord")}>
-            <Gamepad2 className="mr-2 h-5 w-5" />
-            Login with Discord
-          </Button>
-        )}
+        <Button size="lg" className="mt-6" onClick={() => signIn("discord")}>
+          <Gamepad2 className="mr-2 h-5 w-5" />
+          Login with Discord
+        </Button>
       </section>
 
       {/* Footer */}
       <footer className="border-t border-border/40 pt-6 pb-4 text-center text-sm text-muted-foreground">
-        <p>FMC Gen — Free MC Account Generator{isDemo ? " (Demo Mode)" : ""}</p>
+        <p>FMC Gen — Free MC Account Generator</p>
       </footer>
     </div>
   );
