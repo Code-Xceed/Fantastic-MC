@@ -96,7 +96,7 @@ export function Navbar() {
                     <motion.div
                       layoutId="navbar-indicator"
                       className="absolute inset-0 rounded-full bg-accent -z-10"
-                      transition={{ type: "spring", stiffness: 350, damping: 30 }}
+                      transition={{ type: "spring" as const, stiffness: 350, damping: 30 }}
                     />
                   )}
                   <link.icon className="h-4 w-4" />
@@ -121,7 +121,7 @@ export function Navbar() {
                   <motion.div
                     layoutId="navbar-indicator"
                     className="absolute inset-0 rounded-full bg-accent -z-10"
-                    transition={{ type: "spring", stiffness: 350, damping: 30 }}
+                    transition={{ type: "spring" as const, stiffness: 350, damping: 30 }}
                   />
                 )}
                 <Shield className="h-4 w-4" />
