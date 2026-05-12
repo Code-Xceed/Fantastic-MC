@@ -20,9 +20,12 @@ if (!process.env.NEXTAUTH_SECRET) {
 }
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
+  secret: process.env.NEXTAUTH_SECRET,
   trustHost: true,
   providers: [
     Discord({
+      clientId: process.env.DISCORD_CLIENT_ID,
+      clientSecret: process.env.DISCORD_CLIENT_SECRET,
       authorization:
         "https://discord.com/api/oauth2/authorize?scope=identify+guilds+guilds.members.read",
     }),
