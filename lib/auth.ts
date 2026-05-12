@@ -21,8 +21,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     Discord({
       clientId: process.env.DISCORD_CLIENT_ID || "missing_client_id",
       clientSecret: process.env.DISCORD_CLIENT_SECRET || "missing_client_secret",
-      authorization:
-        "https://discord.com/api/oauth2/authorize?scope=identify+guilds+guilds.members.read",
+      authorization: { params: { scope: "identify guilds guilds.members.read" } },
     }),
   ],
   pages: {
