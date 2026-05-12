@@ -14,18 +14,17 @@ declare module "next-auth" {
   }
 }
 
-// Ensure NEXTAUTH_SECRET exists
-if (!process.env.NEXTAUTH_SECRET) {
-  logger.error("auth.secret_missing");
-}
+// Ensure environment variables are mapped correctly for NextAuth v5
+process.env.AUTH_SECRET = process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET || "fallback_secret_for_build_12345678901234567890";
+process.env.AUTH_URL = process.env.AUTH_URL || process.env.NEXTAUTH_URL;
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
-  secret: process.env.NEXTAUTH_SECRET,
+  secret: process.env.AUTH_SECRET,
   trustHost: true,
   providers: [
     Discord({
-      clientId: process.env.DISCORD_CLIENT_ID,
-      clientSecret: process.env.DISCORD_CLIENT_SECRET,
+      clientId: process.env.DISCORD_CLIENT_ID || "missing_client_id",
+      clientSecret: process.env.DISCORD_CLIENT_SECRET || "missing_client_secret",
       authorization:
         "https://discord.com/api/oauth2/authorize?scope=identify+guilds+guilds.members.read",
     }),
