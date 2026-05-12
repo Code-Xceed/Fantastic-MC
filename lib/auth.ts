@@ -1,5 +1,6 @@
 import NextAuth from "next-auth";
 import Discord from "next-auth/providers/discord";
+import { logger } from "./log";
 
 declare module "next-auth" {
   interface Session {
@@ -15,7 +16,7 @@ declare module "next-auth" {
 
 // Ensure NEXTAUTH_SECRET exists
 if (!process.env.NEXTAUTH_SECRET) {
-  console.error("NEXTAUTH_SECRET is not set. Authentication will not work.");
+  logger.error("auth.secret_missing");
 }
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
@@ -36,7 +37,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       const botToken = process.env.DISCORD_BOT_TOKEN;
 
       if (!guildId || !botToken) {
-        console.error("Missing DISCORD_GUILD_ID or DISCORD_BOT_TOKEN");
+        logger.error("auth.discord_config_missing");
         return false;
       }
 
@@ -49,7 +50,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         );
 
         if (!res.ok) {
-          console.error("Guild member check failed:", res.status);
+          logger.warn("auth.guild_member_check_failed", { status: res.status });
           return false;
         }
 
@@ -64,7 +65,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
         return true;
       } catch (err) {
-        console.error("Error checking guild membership:", err);
+        logger.error("auth.guild_member_check_error", { error: err instanceof Error ? err.message : "unknown" });
         return false;
       }
     },

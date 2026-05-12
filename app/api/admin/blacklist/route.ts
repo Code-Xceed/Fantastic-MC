@@ -1,5 +1,7 @@
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { invalidateUserCache } from "@/lib/cache";
+import { logger } from "@/lib/log";
 import { NextResponse } from "next/server";
 
 export async function POST(req: Request) {
@@ -24,10 +26,11 @@ export async function POST(req: Request) {
       where: { user_id: userId },
       data: { is_blacklisted: newStatus },
     });
+    invalidateUserCache(userId);
 
     return NextResponse.json({ isBlacklisted: newStatus });
   } catch (error) {
-    console.error("Error toggling blacklist:", error);
+    logger.error("api.admin.blacklist.failed", { error: error instanceof Error ? error.message : "unknown" });
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

@@ -1,5 +1,7 @@
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { invalidateUserCache } from "@/lib/cache";
+import { logger } from "@/lib/log";
 import { NextResponse } from "next/server";
 
 export async function POST(req: Request) {
@@ -30,6 +32,7 @@ export async function POST(req: Request) {
           },
         });
       }
+      invalidateUserCache(userId);
       return NextResponse.json({ success: true, action: "add" });
     }
 
@@ -42,6 +45,7 @@ export async function POST(req: Request) {
           subscription_stage: timeSec > 0 ? "Premium" : "Free",
         },
       });
+      invalidateUserCache(userId);
       return NextResponse.json({ success: true, action: "set" });
     }
 
@@ -50,6 +54,7 @@ export async function POST(req: Request) {
         where: { user_id: userId },
         data: { subscription_time_left: null, subscription_stage: "Free" },
       });
+      invalidateUserCache(userId);
       return NextResponse.json({ success: true, action: "remove" });
     }
 
@@ -65,6 +70,7 @@ export async function POST(req: Request) {
             where: { user_id: user.user_id },
             data: { subscription_time_left: user.subscription_time_left + massTimeSec },
           });
+          invalidateUserCache(user.user_id);
         }
       }
 
@@ -73,7 +79,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ error: "Invalid action" }, { status: 400 });
   } catch (error) {
-    console.error("Error managing subscriptions:", error);
+    logger.error("api.admin.subscriptions.failed", { error: error instanceof Error ? error.message : "unknown" });
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

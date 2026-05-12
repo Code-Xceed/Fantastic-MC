@@ -1,5 +1,6 @@
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { logger } from "@/lib/log";
 import { NextResponse } from "next/server";
 
 export async function GET(req: Request) {
@@ -10,13 +11,18 @@ export async function GET(req: Request) {
 
   const { searchParams } = new URL(req.url);
   const search = searchParams.get("search") || "";
+  const filter = searchParams.get("filter") || "all";
   const page = parseInt(searchParams.get("page") || "1", 10);
-  const limit = 20;
+  const limit = Math.min(parseInt(searchParams.get("limit") || "20", 10), 100);
 
   try {
-    const where = search
-      ? { OR: [{ username: { contains: search, mode: "insensitive" as const } }, { user_id: { contains: search } }] }
-      : {};
+    const where = {
+      ...(search
+        ? { OR: [{ username: { contains: search, mode: "insensitive" as const } }, { user_id: { contains: search } }] }
+        : {}),
+      ...(filter === "premium" ? { subscription_stage: "Premium" } : {}),
+      ...(filter === "blacklisted" ? { is_blacklisted: true } : {}),
+    };
 
     const [users, total] = await Promise.all([
       db.user.findMany({
@@ -47,7 +53,7 @@ export async function GET(req: Request) {
       totalPages: Math.ceil(total / limit),
     });
   } catch (error) {
-    console.error("Error fetching users:", error);
+    logger.error("api.admin.users.failed", { error: error instanceof Error ? error.message : "unknown" });
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

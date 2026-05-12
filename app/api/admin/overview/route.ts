@@ -1,5 +1,7 @@
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { getCached } from "@/lib/cache";
+import { logger } from "@/lib/log";
 import { NextResponse } from "next/server";
 
 export async function GET() {
@@ -26,7 +28,7 @@ export async function GET() {
     });
 
     // Low stock alerts (services with < 5 accounts)
-    const services = await db.serviceConfig.findMany({ where: { is_active: true } });
+    const services = await getCached("services", () => db.serviceConfig.findMany({ where: { is_active: true } }));
     const lowStock: string[] = [];
     for (const svc of services) {
       const freeCount = await db.account.count({ where: { service_name: `${svc.name}_free` } });
@@ -50,7 +52,7 @@ export async function GET() {
       })),
     });
   } catch (error) {
-    console.error("Error fetching admin overview:", error);
+    logger.error("api.admin.overview.failed", { error: error instanceof Error ? error.message : "unknown" });
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

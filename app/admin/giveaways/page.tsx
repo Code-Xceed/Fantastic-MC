@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
-import { Gift, Plus, Trophy, Users } from "lucide-react";
+import { Gift, Plus, Search, Trophy, Users } from "lucide-react";
 
 interface GiveawayItem {
   id: number;
@@ -33,6 +33,8 @@ export default function AdminGiveawaysPage() {
   const [accountCount, setAccountCount] = useState("1");
   const [isPremium, setIsPremium] = useState(false);
   const [endsAt, setEndsAt] = useState("");
+  const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState<"all" | "active" | "ended" | "premium">("all");
 
   const fetchGiveaways = () => {
     fetch("/api/admin/giveaways")
@@ -98,8 +100,20 @@ export default function AdminGiveawaysPage() {
     }
   };
 
-  const active = giveaways.filter((g) => g.isActive);
-  const past = giveaways.filter((g) => !g.isActive);
+  const filteredGiveaways = giveaways.filter((g) => {
+    const matchesSearch =
+      !search.trim() ||
+      g.title.toLowerCase().includes(search.toLowerCase()) ||
+      g.service.toLowerCase().includes(search.toLowerCase());
+    const matchesFilter =
+      filter === "all" ||
+      (filter === "active" && g.isActive) ||
+      (filter === "ended" && !g.isActive) ||
+      (filter === "premium" && g.isPremium);
+    return matchesSearch && matchesFilter;
+  });
+  const active = filteredGiveaways.filter((g) => g.isActive);
+  const past = filteredGiveaways.filter((g) => !g.isActive);
 
   return (
     <div className="space-y-6">
@@ -107,6 +121,30 @@ export default function AdminGiveawaysPage() {
         <Gift className="h-6 w-6" />
         Giveaway Management
       </h1>
+
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="relative max-w-md flex-1">
+          <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search giveaways"
+            className="pl-9"
+          />
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {(["all", "active", "ended", "premium"] as const).map((item) => (
+            <Button
+              key={item}
+              variant={filter === item ? "default" : "outline"}
+              size="sm"
+              onClick={() => setFilter(item)}
+            >
+              {item.charAt(0).toUpperCase() + item.slice(1)}
+            </Button>
+          ))}
+        </div>
+      </div>
 
       {/* Active giveaways */}
       <Card>
@@ -118,11 +156,15 @@ export default function AdminGiveawaysPage() {
         </CardHeader>
         <CardContent>
           {active.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No active giveaways.</p>
+            <div className="rounded-lg border border-dashed p-8 text-center">
+              <Trophy className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
+              <p className="font-medium">No active giveaways match this view</p>
+              <p className="text-sm text-muted-foreground">Create one below or adjust your filters.</p>
+            </div>
           ) : (
             <div className="space-y-3">
               {active.map((g) => (
-                <div key={g.id} className="flex items-center justify-between rounded-lg border p-3">
+                <div key={g.id} className="flex flex-col gap-3 rounded-lg border p-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <p className="font-medium">{g.title}</p>
                     <div className="flex gap-2 mt-1">

@@ -6,7 +6,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { AdSlot } from "@/components/AdSlot";
-import { LoadingSpinner } from "@/components/LoadingSpinner";
+import { Skeleton } from "@/components/Skeleton";
+import { EmptyState } from "@/components/EmptyState";
 import { Gift, Clock, Users, Trophy } from "lucide-react";
 import { toast } from "sonner";
 
@@ -36,6 +37,7 @@ export default function GiveawaysPage() {
   const [active, setActive] = useState<ActiveGiveaway[]>([]);
   const [past, setPast] = useState<PastGiveaway[]>([]);
   const [entering, setEntering] = useState<number | null>(null);
+  const [nowMs, setNowMs] = useState<number | null>(null);
 
   useEffect(() => {
     fetch("/api/giveaways")
@@ -45,6 +47,11 @@ export default function GiveawaysPage() {
         setPast(data.past || []);
       })
       .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNowMs(Date.now()), 1000);
+    return () => window.clearInterval(timer);
   }, []);
 
   const handleEnter = async (giveawayId: number) => {
@@ -80,9 +87,9 @@ export default function GiveawaysPage() {
   };
 
   const getTimeRemaining = (endsAt: string) => {
+    if (nowMs === null) return "Calculating";
     const end = new Date(endsAt).getTime();
-    const now = Date.now();
-    const diff = Math.max(0, end - now);
+    const diff = Math.max(0, end - nowMs);
     const hours = Math.floor(diff / 3600000);
     const mins = Math.floor((diff % 3600000) / 60000);
     const secs = Math.floor((diff % 60000) / 1000);
@@ -92,7 +99,20 @@ export default function GiveawaysPage() {
   };
 
   if (status === "loading") {
-    return <LoadingSpinner className="py-20" text="Loading giveaways..." />;
+    return (
+      <div className="space-y-6">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {[1, 2, 3].map((i) => (
+            <Skeleton key={i} lines={1} />
+          ))}
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {[1, 2, 3].map((i) => (
+            <Skeleton key={i} lines={1} />
+          ))}
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -105,11 +125,11 @@ export default function GiveawaysPage() {
       <AdSlot format="banner" />
 
       {active.length === 0 && past.length === 0 ? (
-        <Card>
-          <CardContent className="p-8 text-center text-muted-foreground">
-            No giveaways available right now. Check back later!
-          </CardContent>
-        </Card>
+        <EmptyState
+          icon={Gift}
+          title="No giveaways available"
+          description="Check back later for active giveaways and recent winners."
+        />
       ) : (
         <>
           {/* Active giveaways */}
@@ -174,7 +194,14 @@ export default function GiveawaysPage() {
                     <CardContent className="p-5 space-y-2">
                       <div className="flex items-center justify-between">
                         <h3 className="font-semibold">{g.title}</h3>
-                        <Badge variant="outline">Ended</Badge>
+                        {session?.user?.id && g.winnerIds?.split(",").includes(session.user.id) ? (
+                          <Badge>
+                            <Trophy className="mr-1 h-3 w-3" />
+                            You won!
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline">Ended</Badge>
+                        )}
                       </div>
                       <p className="text-sm text-muted-foreground">
                         {g.accountCount || 1}x {g.service} — {g.entryCount} entries

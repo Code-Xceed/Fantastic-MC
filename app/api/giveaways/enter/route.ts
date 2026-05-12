@@ -1,5 +1,7 @@
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { invalidateCache } from "@/lib/cache";
+import { logger } from "@/lib/log";
 import { NextResponse } from "next/server";
 
 export async function POST(req: Request) {
@@ -52,9 +54,14 @@ export async function POST(req: Request) {
       data: { giveaway_id: giveawayId, user_id: session.user.id },
     });
 
+    invalidateCache("giveaways:active");
+
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error("Error entering giveaway:", error);
+    logger.error("api.giveaway.enter_failed", {
+      userId: session.user.id,
+      error: error instanceof Error ? error.message : "unknown",
+    });
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

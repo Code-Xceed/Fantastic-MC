@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
-import { Package, Plus, Trash2, Upload } from "lucide-react";
+import { Package, Plus, Search, Trash2, Upload } from "lucide-react";
 
 interface ServiceInfo {
   name: string;
@@ -23,10 +23,13 @@ export default function AdminStockPage() {
   const [services, setServices] = useState<ServiceInfo[]>([]);
   const [serviceName, setServiceName] = useState("");
   const [displayName, setDisplayName] = useState("");
+  const [iconUrl, setIconUrl] = useState("");
   const [combos, setCombos] = useState("");
   const [isPremium, setIsPremium] = useState(false);
   const [removeCapture, setRemoveCapture] = useState(true);
   const [adding, setAdding] = useState(false);
+  const [search, setSearch] = useState("");
+  const [tierFilter, setTierFilter] = useState<"all" | "free" | "premium" | "empty">("all");
 
   const fetchServices = () => {
     fetch("/api/services")
@@ -106,7 +109,7 @@ export default function AdminStockPage() {
       const res = await fetch("/api/admin/services", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: serviceName, displayName: displayName || serviceName }),
+        body: JSON.stringify({ userId: serviceName, displayName: displayName || serviceName, iconUrl: iconUrl || null }),
       });
 
       const data = await res.json();
@@ -117,11 +120,25 @@ export default function AdminStockPage() {
 
       toast.success("Service created");
       setDisplayName("");
+      setIconUrl("");
       fetchServices();
     } catch {
       toast.error("Something went wrong");
     }
   };
+
+  const filteredServices = services.filter((svc) => {
+    const matchesSearch =
+      !search.trim() ||
+      svc.name.toLowerCase().includes(search.toLowerCase()) ||
+      svc.displayName.toLowerCase().includes(search.toLowerCase());
+    const matchesTier =
+      tierFilter === "all" ||
+      (tierFilter === "free" && svc.freeStock > 0) ||
+      (tierFilter === "premium" && svc.premiumStock > 0) ||
+      (tierFilter === "empty" && svc.freeStock + svc.premiumStock === 0);
+    return matchesSearch && matchesTier;
+  });
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -143,15 +160,42 @@ export default function AdminStockPage() {
       {/* Current stock */}
       <Card>
         <CardHeader>
-          <CardTitle>Current Stock</CardTitle>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <CardTitle>Current Stock</CardTitle>
+            <div className="flex flex-wrap gap-2">
+              {(["all", "free", "premium", "empty"] as const).map((filter) => (
+                <Button
+                  key={filter}
+                  variant={tierFilter === filter ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setTierFilter(filter)}
+                >
+                  {filter.charAt(0).toUpperCase() + filter.slice(1)}
+                </Button>
+              ))}
+            </div>
+          </div>
         </CardHeader>
-        <CardContent>
-          {services.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No services yet.</p>
+        <CardContent className="space-y-4">
+          <div className="relative max-w-md">
+            <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search services"
+              className="pl-9"
+            />
+          </div>
+          {filteredServices.length === 0 ? (
+            <div className="rounded-lg border border-dashed p-8 text-center">
+              <Package className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
+              <p className="font-medium">No stock rows match this view</p>
+              <p className="text-sm text-muted-foreground">Adjust the search or filter, or create a new service below.</p>
+            </div>
           ) : (
             <div className="space-y-2">
-              {services.map((svc) => (
-                <div key={svc.name} className="flex items-center justify-between rounded-lg border p-3">
+              {filteredServices.map((svc) => (
+                <div key={svc.name} className="flex flex-col gap-3 rounded-lg border p-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <p className="font-medium">{svc.displayName}</p>
                     <div className="flex gap-2 mt-1">
@@ -159,7 +203,7 @@ export default function AdminStockPage() {
                       <Badge>Premium: {svc.premiumStock}</Badge>
                     </div>
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2">
                     <Button
                       variant="outline"
                       size="sm"
@@ -292,6 +336,14 @@ export default function AdminStockPage() {
                 placeholder="e.g. Minecraft Java"
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2 sm:col-span-2">
+              <Label>Icon URL</Label>
+              <Input
+                placeholder="https://example.com/icon.png"
+                value={iconUrl}
+                onChange={(e) => setIconUrl(e.target.value)}
               />
             </div>
           </div>

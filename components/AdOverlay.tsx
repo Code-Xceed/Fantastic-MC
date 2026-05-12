@@ -1,44 +1,34 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { X, Tv, Volume2 } from "lucide-react";
+import { Tv, Volume2, X } from "lucide-react";
 
 interface AdOverlayProps {
-  duration?: number; // seconds
+  duration?: number;
   onComplete: () => void;
   onSkip?: () => void;
 }
 
 export function AdOverlay({ duration = 30, onComplete, onSkip }: AdOverlayProps) {
   const [timeLeft, setTimeLeft] = useState(duration);
-  const [canSkip, setCanSkip] = useState(false);
-  const [adLoaded, setAdLoaded] = useState(false);
   const zoneId = process.env.NEXT_PUBLIC_PROPELLER_ZONE_ID;
+  const canSkip = timeLeft <= 0;
 
   useEffect(() => {
-    if (timeLeft <= 0) {
-      setCanSkip(true);
-      return;
-    }
+    if (timeLeft <= 0) return;
 
-    const timer = setInterval(() => {
+    const timer = window.setInterval(() => {
       setTimeLeft((prev) => Math.max(0, prev - 1));
     }, 1000);
 
-    return () => clearInterval(timer);
+    return () => window.clearInterval(timer);
   }, [timeLeft]);
 
-  // Load PropellerAds script
   useEffect(() => {
-    if (!zoneId) {
-      // No zone configured — just show countdown
-      setAdLoaded(true);
-      return;
-    }
+    if (!zoneId) return;
 
-    // Inject PropellerAds interstitial
     const existingScript = document.getElementById("propeller-ads-script");
     if (!existingScript) {
       const script = document.createElement("script");
@@ -49,40 +39,27 @@ export function AdOverlay({ duration = 30, onComplete, onSkip }: AdOverlayProps)
       document.head.appendChild(script);
     }
 
-    // Try to trigger the ad
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const w = window as any;
-      if (w.AdProvider) {
-        w.AdProvider.push({ zone: zoneId, type: "interstitial" });
-        setAdLoaded(true);
-      } else {
-        // Script still loading — mark as loaded after timeout
-        const fallback = setTimeout(() => setAdLoaded(true), 2000);
-        return () => clearTimeout(fallback);
-      }
+      const w = window as Window & {
+        AdProvider?: { push: (payload: { zone: string; type: string }) => void };
+      };
+      w.AdProvider?.push({ zone: zoneId, type: "interstitial" });
     } catch {
-      setAdLoaded(true);
+      return;
     }
   }, [zoneId]);
 
-  const progress = ((duration - timeLeft) / duration) * 100;
+  const progress = duration > 0 ? ((duration - timeLeft) / duration) * 100 : 100;
 
   const handleComplete = useCallback(() => {
     onComplete();
   }, [onComplete]);
 
   return (
-    <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-black/90 backdrop-blur-sm">
-      {/* Close button disabled until ad completes */}
-      <div className="absolute top-4 right-4">
+    <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-black/90 px-4 backdrop-blur-sm">
+      <div className="absolute right-4 top-4">
         {canSkip ? (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="text-white hover:bg-white/20"
-            onClick={handleComplete}
-          >
+          <Button variant="ghost" size="icon" className="text-white hover:bg-white/20" onClick={handleComplete}>
             <X className="h-6 w-6" />
           </Button>
         ) : (
@@ -92,16 +69,11 @@ export function AdOverlay({ duration = 30, onComplete, onSkip }: AdOverlayProps)
         )}
       </div>
 
-      {/* Ad container */}
-      <div className="relative w-full max-w-2xl mx-4">
-        {/* PropellerAds zone container */}
-        {zoneId && (
-          <div id={`propeller-${zoneId}`} className="mb-4 min-h-[250px] flex items-center justify-center" />
-        )}
-
-        {/* Placeholder if no ad zone */}
-        {!zoneId && (
-          <div className="mb-4 flex min-h-[250px] flex-col items-center justify-center rounded-xl border border-dashed border-white/20 bg-white/5 p-8">
+      <div className="relative w-full max-w-2xl">
+        {zoneId ? (
+          <div id={`propeller-${zoneId}`} className="mb-4 flex min-h-[250px] items-center justify-center" />
+        ) : (
+          <div className="mb-4 flex min-h-[250px] flex-col items-center justify-center rounded-lg border border-dashed border-white/20 bg-white/5 p-8 text-center">
             <Tv className="mb-3 h-16 w-16 text-white/40" />
             <p className="text-lg font-medium text-white/60">Sponsored Content</p>
             <p className="text-sm text-white/30">Ad will appear here when configured</p>
@@ -109,33 +81,25 @@ export function AdOverlay({ duration = 30, onComplete, onSkip }: AdOverlayProps)
         )}
       </div>
 
-      {/* Countdown bar */}
-      <div className="w-full max-w-2xl mx-4 mt-4 space-y-3">
+      <div className="mt-4 w-full max-w-2xl space-y-3">
         <Progress value={progress} className="h-2 bg-white/10" />
-
-        <div className="flex items-center justify-between text-sm">
+        <div className="flex items-center justify-between gap-3 text-sm">
           <div className="flex items-center gap-2 text-white/50">
             <Volume2 className="h-4 w-4" />
             <span>Please wait while the ad plays</span>
           </div>
-          <span className="text-white/70 font-mono">
-            {canSkip ? "Done!" : `${timeLeft}s`}
-          </span>
+          <span className="font-mono text-white/70">{canSkip ? "Done!" : `${timeLeft}s`}</span>
         </div>
 
         {canSkip && (
-          <Button
-            className="w-full"
-            size="lg"
-            onClick={handleComplete}
-          >
+          <Button className="w-full" size="lg" onClick={handleComplete}>
             Claim Your Account
           </Button>
         )}
 
         {!canSkip && onSkip && (
           <p className="text-center text-xs text-white/30">
-            Premium users skip ads — <a href="/services" className="underline">Learn more</a>
+            Premium users skip ads. <a href="/services" className="underline">Learn more</a>
           </p>
         )}
       </div>

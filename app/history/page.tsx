@@ -1,13 +1,13 @@
 "use client";
 
 import { useSession } from "next-auth/react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { AdSlot } from "@/components/AdSlot";
-import { LoadingSpinner } from "@/components/LoadingSpinner";
 import { ErrorState } from "@/components/ErrorState";
+import { Skeleton } from "@/components/Skeleton";
 import {
   History,
   ChevronLeft,
@@ -41,7 +41,7 @@ export default function HistoryPage() {
   const [copiedId, setCopiedId] = useState<number | null>(null);
   const [error, setError] = useState(false);
 
-  const fetchHistory = () => {
+  const fetchHistory = useCallback(() => {
     if (session?.user?.id) {
       setError(false);
       fetch(`/api/user/history?page=${page}`)
@@ -53,11 +53,12 @@ export default function HistoryPage() {
         })
         .catch(() => setError(true));
     }
-  };
+  }, [page, session?.user?.id]);
 
   useEffect(() => {
-    fetchHistory();
-  }, [session, page]);
+    const timer = window.setTimeout(fetchHistory, 0);
+    return () => window.clearTimeout(timer);
+  }, [fetchHistory]);
 
   const copyToClipboard = (id: number, text: string) => {
     navigator.clipboard.writeText(text);
@@ -82,7 +83,20 @@ export default function HistoryPage() {
   };
 
   if (status === "loading") {
-    return <LoadingSpinner className="py-20" text="Loading history..." />;
+    return (
+      <div className="space-y-6">
+        <div className="grid gap-4 sm:grid-cols-3">
+          {[1, 2, 3, 4, 5, 6].map((i) => (
+            <Skeleton key={i} lines={1} />
+          ))}
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {[1, 2, 3].map((i) => (
+            <Skeleton key={i} lines={1} />
+          ))}
+        </div>
+      </div>
+    );
   }
 
   if (!session) {

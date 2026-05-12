@@ -1,6 +1,18 @@
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { invalidateCache, invalidateUserCache } from "@/lib/cache";
+import { logger } from "@/lib/log";
+import { randomInt } from "crypto";
 import { NextResponse } from "next/server";
+
+function secureShuffle<T>(items: T[]) {
+  const copy = [...items];
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = randomInt(i + 1);
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy;
+}
 
 export async function POST(req: Request) {
   const session = await auth();
@@ -31,9 +43,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "No entries to draw from" }, { status: 400 });
     }
 
-    // Pick random winners
     const winnerCount = Math.min(giveaway.account_count, giveaway.entries.length);
-    const shuffled = [...giveaway.entries].sort(() => Math.random() - 0.5);
+    const shuffled = secureShuffle(giveaway.entries);
     const winnerEntries = shuffled.slice(0, winnerCount);
     const winnerIds = winnerEntries.map((e) => e.user_id);
 
@@ -53,56 +64,56 @@ export async function POST(req: Request) {
       }, { status: 400 });
     }
 
-    // Assign accounts to winners and record in history + create win notifications
-    for (let i = 0; i < winnerCount; i++) {
-      const account = accounts[i];
-      const winnerId = winnerIds[i];
+    await db.$transaction(async (tx) => {
+      for (let i = 0; i < winnerCount; i++) {
+        const account = accounts[i];
+        const winnerId = winnerIds[i];
 
-      await db.account.delete({ where: { id: account.id } });
+        await tx.account.delete({ where: { id: account.id } });
+        await tx.generationHistory.create({
+          data: {
+            user_id: winnerId,
+            service_name: giveaway.service_name,
+            combo: account.combo,
+            is_premium: giveaway.is_premium,
+            source: "giveaway",
+            giveaway_id: giveawayId,
+          },
+        });
+        await tx.giveawayWin.create({
+          data: {
+            user_id: winnerId,
+            giveaway_id: giveawayId,
+            title: giveaway.title,
+            service_name: giveaway.service_name,
+            combo: account.combo,
+            is_premium: giveaway.is_premium,
+          },
+        });
+        await tx.user.update({
+          where: { user_id: winnerId },
+          data: {
+            amount_genned: { increment: giveaway.is_premium ? 0 : 1 },
+            prem_amount_genned: { increment: giveaway.is_premium ? 1 : 0 },
+            last_time_genned: String(Date.now() / 1000),
+          },
+        });
+      }
 
-      await db.generationHistory.create({
-        data: {
-          user_id: winnerId,
-          service_name: giveaway.service_name,
-          combo: account.combo,
-          is_premium: giveaway.is_premium,
-          source: "giveaway",
-          giveaway_id: giveawayId,
-        },
+      await tx.giveaway.update({
+        where: { id: giveawayId },
+        data: { is_active: false, winner_ids: winnerIds.join(",") },
       });
-
-      // Create win notification for the user
-      await db.giveawayWin.create({
-        data: {
-          user_id: winnerId,
-          giveaway_id: giveawayId,
-          title: giveaway.title,
-          service_name: giveaway.service_name,
-          combo: account.combo,
-          is_premium: giveaway.is_premium,
-        },
-      });
-
-      // Update user gen count
-      await db.user.update({
-        where: { user_id: winnerId },
-        data: {
-          amount_genned: { increment: giveaway.is_premium ? 0 : 1 },
-          prem_amount_genned: { increment: giveaway.is_premium ? 1 : 0 },
-          last_time_genned: String(Date.now() / 1000),
-        },
-      });
-    }
-
-    // Mark giveaway as ended
-    await db.giveaway.update({
-      where: { id: giveawayId },
-      data: { is_active: false, winner_ids: winnerIds.join(",") },
     });
+
+    winnerIds.forEach(invalidateUserCache);
+    invalidateCache("giveaways:active");
+    invalidateCache("giveaways:past");
+    logger.info("api.admin.giveaway.drawn", { giveawayId, winnerCount });
 
     return NextResponse.json({ success: true, winnerIds });
   } catch (error) {
-    console.error("Error drawing winners:", error);
+    logger.error("api.admin.giveaway.draw_failed", { error: error instanceof Error ? error.message : "unknown" });
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

@@ -1,5 +1,7 @@
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { invalidateCache } from "@/lib/cache";
+import { logger } from "@/lib/log";
 import { NextResponse } from "next/server";
 
 export async function POST(req: Request) {
@@ -54,12 +56,15 @@ export async function POST(req: Request) {
       });
     }
 
+    invalidateCache("services");
+    invalidateCache("services:stock-counts");
+
     return NextResponse.json({
       added: toAdd.length,
       duplicates: duplicateCount,
     });
   } catch (error) {
-    console.error("Error adding stock:", error);
+    logger.error("api.admin.stock.add_failed", { error: error instanceof Error ? error.message : "unknown" });
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
@@ -81,9 +86,11 @@ export async function DELETE(req: Request) {
       where: { service_name: serviceName.toLowerCase() },
     });
 
+    invalidateCache("services:stock-counts");
+
     return NextResponse.json({ deleted: result.count });
   } catch (error) {
-    console.error("Error clearing stock:", error);
+    logger.error("api.admin.stock.clear_failed", { error: error instanceof Error ? error.message : "unknown" });
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

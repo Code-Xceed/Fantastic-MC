@@ -1,5 +1,7 @@
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { invalidateCache } from "@/lib/cache";
+import { logger } from "@/lib/log";
 import { NextResponse } from "next/server";
 
 export async function POST(req: Request) {
@@ -24,6 +26,8 @@ export async function POST(req: Request) {
           is_active: isActive !== undefined ? isActive : existing.is_active,
         },
       });
+      invalidateCache("services");
+      invalidateCache("services:stock-counts");
       return NextResponse.json({ service: updated });
     } else {
       const created = await db.serviceConfig.create({
@@ -34,10 +38,12 @@ export async function POST(req: Request) {
           is_active: isActive !== undefined ? isActive : true,
         },
       });
+      invalidateCache("services");
+      invalidateCache("services:stock-counts");
       return NextResponse.json({ service: created });
     }
   } catch (error) {
-    console.error("Error managing service config:", error);
+    logger.error("api.admin.service.failed", { error: error instanceof Error ? error.message : "unknown" });
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

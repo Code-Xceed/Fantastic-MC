@@ -8,9 +8,10 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AdSlot } from "@/components/AdSlot";
 import { AdOverlay } from "@/components/AdOverlay";
-import { LoadingSpinner } from "@/components/LoadingSpinner";
+import { Skeleton } from "@/components/Skeleton";
+import { EmptyState } from "@/components/EmptyState";
 import { formatCooldown } from "@/lib/gen-logic";
-import { Server, Zap, Crown, Copy, Check, Tv } from "lucide-react";
+import { Check, Copy, Crown, RefreshCw, Server, Tv, Zap } from "lucide-react";
 import { toast } from "sonner";
 
 interface ServiceStock {
@@ -41,7 +42,7 @@ export default function ServicesPage() {
   const [result, setResult] = useState<{ service: string; account: string; isPremium: boolean } | null>(null);
   const [copied, setCopied] = useState(false);
 
-  useEffect(() => {
+  const refreshData = useCallback(() => {
     fetch("/api/services")
       .then((r) => r.json())
       .then((data) => setServices(data.services || []))
@@ -55,10 +56,11 @@ export default function ServicesPage() {
     }
   }, [session]);
 
-  const refreshData = useCallback(() => {
-    fetch("/api/user").then((r) => r.json()).then((d) => setUserData(d.user));
-    fetch("/api/services").then((r) => r.json()).then((d) => setServices(d.services || []));
-  }, []);
+  useEffect(() => {
+    refreshData();
+    const timer = window.setInterval(refreshData, 20_000);
+    return () => window.clearInterval(timer);
+  }, [refreshData]);
 
   const handleGenerate = async (service: string, isPremium: boolean) => {
     if (!session) return;
@@ -125,6 +127,7 @@ export default function ServicesPage() {
     } catch {
       toast.error("Failed to claim account");
       setGenState("idle");
+      setClaimToken(null);
     } finally {
       setClaimToken(null);
     }
@@ -137,8 +140,45 @@ export default function ServicesPage() {
     toast.success("Copied to clipboard!");
   };
 
+  const ServiceIcon = ({ iconUrl, name }: { iconUrl?: string | null; name: string }) => {
+    if (iconUrl) {
+      // eslint-disable-next-line @next/next/no-img-element
+      return <img src={iconUrl} alt={name} className="h-6 w-6 rounded" />;
+    }
+    switch (name.toLowerCase()) {
+      case "minecraft":
+        return <Tv className="h-6 w-6 text-green-600" />;
+      case "spotify":
+        return <Server className="h-6 w-6 text-green-600" />;
+      case "netflix":
+        return <Server className="h-6 w-6 text-red-600" />;
+      case "youtube":
+        return <Server className="h-6 w-6 text-red-600" />;
+      default:
+        return <Server className="h-6 w-6 text-gray-600" />;
+    }
+  };
+
   if (status === "loading") {
-    return <LoadingSpinner className="py-20" text="Loading services..." />;
+    return (
+      <div className="space-y-6">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {[1, 2, 3].map((i) => (
+            <Skeleton key={i} lines={1} />
+          ))}
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {[1, 2, 3].map((i) => (
+            <Skeleton key={i} lines={1} />
+          ))}
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {[1, 2, 3].map((i) => (
+            <Skeleton key={i} lines={1} />
+          ))}
+        </div>
+      </div>
+    );
   }
 
   if (!session) {
@@ -153,65 +193,64 @@ export default function ServicesPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-2xl font-bold flex items-center gap-2">
           <Server className="h-6 w-6" />
           Services
         </h1>
-        {!isPremiumOrAdmin && (
-          <Badge variant="outline" className="text-xs">
-            <Tv className="mr-1 h-3 w-3" />
-            Free users watch a 30s ad
-          </Badge>
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+          {!isPremiumOrAdmin && (
+            <Badge variant="outline" className="text-xs">
+              <Tv className="mr-1 h-3 w-3" />
+              Free users watch a 30s ad
+            </Badge>
+          )}
+          <Button variant="outline" size="sm" onClick={refreshData}>
+            <RefreshCw className="mr-2 h-4 w-4" />
+            Refresh
+          </Button>
+        </div>
       </div>
 
       <AdSlot format="banner" />
 
       {/* Services grid */}
       {services.length === 0 ? (
-        <Card>
-          <CardContent className="p-6 text-center text-muted-foreground">
-            No services available yet. Check back later!
-          </CardContent>
-        </Card>
+        <EmptyState
+          icon={Server}
+          title="No services available"
+          description="An admin needs to create a service and add stock before accounts can be generated."
+        />
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {services.map((s) => (
-            <Card key={s.name} className="border-border/50">
+          {services.map((svc) => (
+            <Card key={svc.name} className="border-border/50">
               <CardContent className="p-5 space-y-4">
-                <div className="flex items-center gap-3">
-                  {s.iconUrl ? (
-                    <img src={s.iconUrl} alt={s.displayName} className="h-10 w-10 rounded" />
-                  ) : (
-                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
-                      <Server className="h-5 w-5 text-primary" />
-                    </div>
-                  )}
-                  <div>
-                    <p className="font-semibold">{s.displayName}</p>
-                    <div className="flex gap-2 mt-1">
-                      <Badge variant="secondary" className="text-xs">
-                        <Zap className="mr-1 h-3 w-3" />
-                        Free: {s.freeStock}
-                      </Badge>
-                      <Badge className="text-xs">
-                        <Crown className="mr-1 h-3 w-3" />
-                        Premium: {s.premiumStock}
-                      </Badge>
-                    </div>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <ServiceIcon iconUrl={svc.iconUrl} name={svc.displayName} />
+                    <h3 className="font-semibold text-lg">{svc.displayName}</h3>
+                  </div>
+                  <div className="flex gap-2">
+                    <Badge variant="secondary" className="flex items-center gap-1">
+                      <Zap className="h-3 w-3" /> Free: {svc.freeStock}
+                    </Badge>
+                    <Badge className="flex items-center gap-1">
+                      <Crown className="h-3 w-3" /> Premium: {svc.premiumStock}
+                    </Badge>
                   </div>
                 </div>
 
-                <div className="space-y-2">
+                <div className="grid gap-2 sm:grid-cols-2">
                   <Button
+                    size="sm"
                     className="w-full"
                     disabled={
+                      svc.freeStock === 0 ||
                       genState !== "idle" ||
-                      s.freeStock === 0 ||
-                      (userData?.freeCooldownRemaining ?? 0) > 0
+                      (userData?.freeCooldownRemaining || 0) > 0
                     }
-                    onClick={() => handleGenerate(s.name, false)}
+                    onClick={() => handleGenerate(svc.name, false)}
                   >
                     {isPremiumOrAdmin ? (
                       <><Zap className="mr-2 h-4 w-4" /> Generate Free</>
@@ -219,29 +258,22 @@ export default function ServicesPage() {
                       <><Tv className="mr-2 h-4 w-4" /> Watch Ad & Generate</>
                     )}
                   </Button>
-
-                  {(userData?.freeCooldownRemaining ?? 0) > 0 && (
-                    <p className="text-xs text-muted-foreground">
-                      Free cooldown: {formatCooldown(userData?.freeCooldownRemaining ?? 0)}
-                    </p>
-                  )}
-
                   <Button
-                    variant="outline"
+                    size="sm"
                     className="w-full"
                     disabled={
+                      svc.premiumStock === 0 ||
                       genState !== "idle" ||
-                      s.premiumStock === 0 ||
                       !userData?.hasSubscription ||
-                      (userData?.premiumCooldownRemaining ?? 0) > 0
+                      (userData?.premiumCooldownRemaining || 0) > 0
                     }
-                    onClick={() => handleGenerate(s.name, true)}
+                    onClick={() => handleGenerate(svc.name, true)}
                   >
                     <Crown className="mr-2 h-4 w-4" /> Generate Premium
                   </Button>
 
                   {(userData?.premiumCooldownRemaining ?? 0) > 0 && userData?.hasSubscription && (
-                    <p className="text-xs text-muted-foreground">
+                    <p className="text-xs text-muted-foreground sm:col-span-2">
                       Premium cooldown: {formatCooldown(userData?.premiumCooldownRemaining ?? 0)}
                     </p>
                   )}

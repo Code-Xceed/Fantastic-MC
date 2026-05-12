@@ -95,14 +95,16 @@ model PendingGeneration {
   token        String   @unique
   user_id      String
   service_name String
-  account_id   Int
+  account_id   Int      @unique
   is_premium   Boolean  @default(false)
   created_at   DateTime @default(now())
+  claimable_at DateTime
   expires_at   DateTime
 
   user User @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
 
   @@index([token])
+  @@index([user_id])
   @@index([expires_at])
 }
 
@@ -126,6 +128,12 @@ model SiteSettings {
   key        String   @unique
   value      String
   updated_at DateTime @updatedAt
+}
+
+model RateLimit {
+  key      String   @id
+  count    Int      @default(0)
+  reset_at DateTime
 }
 
 model GiveawayWin {

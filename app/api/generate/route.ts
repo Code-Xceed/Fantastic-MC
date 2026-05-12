@@ -2,6 +2,8 @@ import { auth } from "@/lib/auth";
 import { reserveAccount } from "@/lib/gen-logic";
 import { db } from "@/lib/db";
 import { rateLimit } from "@/lib/rate-limit";
+import { invalidateUserCache } from "@/lib/cache";
+import { logger } from "@/lib/log";
 import { NextResponse } from "next/server";
 
 export async function POST(req: Request) {
@@ -10,24 +12,26 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
-  // Rate limit: 10 generate requests per minute per user
-  const limit = rateLimit(`gen:${session.user.id}`, { windowMs: 60_000, maxRequests: 10 });
+  const limit = await rateLimit(`gen:${session.user.id}`, { windowMs: 60_000, maxRequests: 10 });
   if (!limit.allowed) {
     return NextResponse.json(
-      { error: "Rate limit exceeded. Please wait before generating again.", cooldownRemaining: Math.ceil((limit.resetAt - Date.now()) / 1000) },
+      {
+        error: "Rate limit exceeded. Please wait before generating again.",
+        cooldownRemaining: Math.ceil((limit.resetAt - Date.now()) / 1000),
+      },
       { status: 429 }
     );
   }
 
   try {
     const body = await req.json();
-    const { service, isPremium } = body;
+    const service = typeof body.service === "string" ? body.service.trim().toLowerCase() : "";
+    const isPremium = Boolean(body.isPremium);
 
     if (!service) {
       return NextResponse.json({ error: "Service is required" }, { status: 400 });
     }
 
-    // Check service exists and is active
     const svcConfig = await db.serviceConfig.findFirst({
       where: { name: service, is_active: true },
     });
@@ -35,36 +39,28 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Service not found or inactive" }, { status: 404 });
     }
 
-    // Ensure user exists in DB
-    let user = await db.user.findUnique({ where: { user_id: session.user.id } });
-    if (!user) {
-      user = await db.user.create({
-        data: {
-          user_id: session.user.id,
-          username: session.user.name,
-          avatar: session.user.image,
-          is_admin: session.isAdmin,
-        },
-      });
-    } else {
-      // Update username/avatar/admin status if changed
-      await db.user.update({
-        where: { user_id: session.user.id },
-        data: {
-          username: session.user.name,
-          avatar: session.user.image,
-          is_admin: session.isAdmin,
-        },
-      });
-    }
+    const user = await db.user.upsert({
+      where: { user_id: session.user.id },
+      update: {
+        username: session.user.name,
+        avatar: session.user.image,
+        is_admin: session.isAdmin,
+      },
+      create: {
+        user_id: session.user.id,
+        username: session.user.name,
+        avatar: session.user.image,
+        is_admin: session.isAdmin,
+        subscription_stage: "Free",
+      },
+    });
 
-    const isAdmin = session.isAdmin || user.is_admin;
     const result = await reserveAccount(
       session.user.id,
       service,
-      isPremium || false,
+      isPremium,
       session.roles || [],
-      isAdmin
+      session.isAdmin || user.is_admin
     );
 
     if (!result.success) {
@@ -74,7 +70,8 @@ export async function POST(req: Request) {
       );
     }
 
-    // Premium/admin: return account immediately
+    invalidateUserCache(session.user.id);
+
     if (!result.requiresAd) {
       return NextResponse.json({
         success: true,
@@ -83,14 +80,17 @@ export async function POST(req: Request) {
       });
     }
 
-    // Free user: return token, they must watch ad then claim
     return NextResponse.json({
       success: true,
       token: result.token,
       requiresAd: true,
+      claimableAt: result.claimableAt,
     });
   } catch (error) {
-    console.error("Generate error:", error);
+    logger.error("api.generate.failed", {
+      userId: session.user.id,
+      error: error instanceof Error ? error.message : "unknown",
+    });
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

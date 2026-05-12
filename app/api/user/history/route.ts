@@ -1,6 +1,8 @@
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { maskCombo } from "@/lib/gen-logic";
+import { getCached } from "@/lib/cache";
+import { logger } from "@/lib/log";
 import { NextResponse } from "next/server";
 
 export async function GET(req: Request) {
@@ -16,15 +18,19 @@ export async function GET(req: Request) {
 
   try {
     const [history, total] = await Promise.all([
-      db.generationHistory.findMany({
-        where: { user_id: session.user.id },
-        orderBy: { generated_at: "desc" },
-        skip,
-        take: limit,
-      }),
-      db.generationHistory.count({
-        where: { user_id: session.user.id },
-      }),
+      getCached(`user:${session.user.id}:history:page:${page}`, () =>
+        db.generationHistory.findMany({
+          where: { user_id: session.user.id },
+          orderBy: { generated_at: "desc" },
+          skip,
+          take: limit,
+        })
+      ),
+      getCached(`user:${session.user.id}:history:count`, () =>
+        db.generationHistory.count({
+          where: { user_id: session.user.id },
+        })
+      ),
     ]);
 
     return NextResponse.json({
@@ -42,7 +48,10 @@ export async function GET(req: Request) {
       totalPages: Math.ceil(total / limit),
     });
   } catch (error) {
-    console.error("Error fetching history:", error);
+    logger.error("api.user.history.failed", {
+      userId: session.user.id,
+      error: error instanceof Error ? error.message : "unknown",
+    });
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

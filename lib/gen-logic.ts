@@ -1,5 +1,7 @@
-import { db } from "./db";
 import { randomUUID } from "crypto";
+import type { Prisma } from "@prisma/client";
+import { db } from "./db";
+import { logger } from "./log";
 
 interface RoleConfig {
   id: string;
@@ -15,10 +17,17 @@ interface CooldownMap {
   [key: string]: string | null;
 }
 
+interface ReservedAccount {
+  id: number;
+  combo: string;
+}
+
 function getRoleConfig(): RoleConfig[] {
   try {
-    return JSON.parse(process.env.ROLE_CONFIG || "[]");
+    const parsed = JSON.parse(process.env.ROLE_CONFIG || "[]");
+    return Array.isArray(parsed) ? parsed : [];
   } catch {
+    logger.warn("role_config.invalid");
     return [];
   }
 }
@@ -27,7 +36,7 @@ function getDefaultCooldown(isPremium: boolean): number {
   const val = isPremium
     ? process.env.DEFAULT_PREMIUM_COOLDOWN
     : process.env.DEFAULT_FREE_COOLDOWN;
-  return parseInt(val || "600", 10);
+  return parseInt(val || (isPremium ? "60" : "600"), 10);
 }
 
 function parseCooldown(raw: unknown): CooldownMap {
@@ -40,6 +49,17 @@ function isPremiumUser(user: { subscription_stage: string; subscription_time_lef
   return user.subscription_stage === "Premium" && !!user.subscription_time_left && user.subscription_time_left > now;
 }
 
+async function getAdPolicy() {
+  const settings = await db.siteSettings.findMany({
+    where: { key: { in: ["ad_duration", "ad_enabled"] } },
+  });
+  const map = new Map(settings.map((s) => [s.key, s.value]));
+  return {
+    enabled: map.get("ad_enabled") !== "false",
+    durationSeconds: Math.max(0, parseInt(map.get("ad_duration") || "30", 10) || 30),
+  };
+}
+
 function getRoleCooldown(userRoles: string[], isPremium: boolean): number {
   const roleConfig = getRoleConfig();
   let minCooldown = Infinity;
@@ -47,26 +67,114 @@ function getRoleCooldown(userRoles: string[], isPremium: boolean): number {
   for (const role of roleConfig) {
     if (userRoles.includes(role.id)) {
       const cd = isPremium ? role.premium_cooldown : role.free_cooldown;
-      if (cd < minCooldown) minCooldown = cd;
+      if (Number.isFinite(cd) && cd < minCooldown) minCooldown = cd;
     }
   }
 
   return minCooldown === Infinity ? getDefaultCooldown(isPremium) : minCooldown;
 }
 
-/**
- * Reserve an account for generation. Returns a claim token.
- * For premium/admin users, the account is returned immediately (no ad required).
- * For free users, the account is reserved and must be claimed after watching an ad.
- */
+function hasServiceAccess(userRoles: string[], service: string) {
+  const roleConfig = getRoleConfig();
+  if (roleConfig.length === 0) return true;
+
+  return roleConfig.some(
+    (role) =>
+      userRoles.includes(role.id) &&
+      (role.gen_access.includes(service) || role.gen_access.includes("all"))
+  );
+}
+
+function getCooldownSeconds(
+  customCooldown: unknown,
+  tier: "Free" | "Premium",
+  userRoles: string[],
+  isPremium: boolean
+) {
+  const custom = parseCooldown(customCooldown)[tier];
+  return custom != null ? Number(custom) : getRoleCooldown(userRoles, isPremium);
+}
+
+async function pickAvailableAccount(tx: Prisma.TransactionClient, serviceName: string) {
+  const accounts = await tx.$queryRaw<ReservedAccount[]>`
+    SELECT a.id, a.combo
+    FROM "Account" a
+    WHERE a.service_name = ${serviceName.toLowerCase()}
+      AND NOT EXISTS (
+        SELECT 1 FROM "PendingGeneration" p
+        WHERE p.account_id = a.id AND p.expires_at > NOW()
+      )
+    ORDER BY RANDOM()
+    LIMIT 1
+    FOR UPDATE SKIP LOCKED
+  `;
+
+  return accounts[0] ?? null;
+}
+
+async function completeGeneration(
+  tx: Prisma.TransactionClient,
+  user: {
+    user_id: string;
+    amount_genned: number;
+    prem_amount_genned: number;
+    user_cooldown: unknown;
+    custom_cooldown: unknown;
+  },
+  account: ReservedAccount,
+  service: string,
+  isPremium: boolean,
+  userRoles: string[],
+  pendingToken?: string
+) {
+  const now = Date.now() / 1000;
+  const tier = isPremium ? "Premium" : "Free";
+  const cooldownSeconds = getCooldownSeconds(user.custom_cooldown, tier, userRoles, isPremium);
+  const updatedCooldown: CooldownMap = {
+    ...parseCooldown(user.user_cooldown),
+    [tier]: String(Math.floor(now + cooldownSeconds)),
+  };
+
+  await tx.account.delete({ where: { id: account.id } });
+  await tx.generationHistory.create({
+    data: {
+      user_id: user.user_id,
+      service_name: service,
+      combo: account.combo,
+      is_premium: isPremium,
+    },
+  });
+  await tx.user.update({
+    where: { user_id: user.user_id },
+    data: {
+      amount_genned: { increment: isPremium ? 0 : 1 },
+      prem_amount_genned: { increment: isPremium ? 1 : 0 },
+      last_time_genned: String(now),
+      user_cooldown: updatedCooldown,
+    },
+  });
+
+  if (pendingToken) {
+    await tx.pendingGeneration.delete({ where: { token: pendingToken } });
+    await tx.adImpression.create({
+      data: {
+        user_id: user.user_id,
+        service_name: service,
+        provider: "propeller",
+        zone_id: process.env.NEXT_PUBLIC_PROPELLER_ZONE_ID || null,
+        completed: true,
+      },
+    });
+  }
+}
+
 export async function reserveAccount(
   userId: string,
   service: string,
   isPremium: boolean,
   userRoles: string[],
   isAdmin: boolean
-): Promise<{ success: boolean; error?: string; token?: string; account?: string; requiresAd?: boolean; cooldownRemaining?: number }> {
-  // 1. Ensure user exists
+): Promise<{ success: boolean; error?: string; token?: string; account?: string; requiresAd?: boolean; cooldownRemaining?: number; claimableAt?: string }> {
   let user = await db.user.findUnique({ where: { user_id: userId } });
   if (!user) {
     user = await db.user.create({
@@ -74,34 +182,20 @@ export async function reserveAccount(
     });
   }
 
-  // 2. Blacklist check
   if (user.is_blacklisted) {
     return { success: false, error: "You are blacklisted from using this service." };
   }
 
-  // 3. Subscription check for premium
   if (isPremium && !isPremiumUser(user)) {
     return { success: false, error: "You don't have an active premium subscription." };
   }
 
-  // 4. Role access check
-  const roleConfig = getRoleConfig();
-  if (roleConfig.length > 0 && userRoles.length > 0) {
-    const hasAccess = roleConfig.some(
-      (r) =>
-        userRoles.includes(r.id) &&
-        (r.gen_access.includes(service) || r.gen_access.includes("all"))
-    );
-    if (!hasAccess) {
-      return { success: false, error: "Your role doesn't have access to this service." };
-    }
+  if (!hasServiceAccess(userRoles, service)) {
+    return { success: false, error: "Your role doesn't have access to this service." };
   }
 
-  // 5. Cooldown check
   const tier = isPremium ? "Premium" : "Free";
-  const cooldownData = parseCooldown(user.user_cooldown);
-  const cooldownEnd = cooldownData[tier];
-
+  const cooldownEnd = parseCooldown(user.user_cooldown)[tier];
   if (cooldownEnd) {
     const endTime = parseFloat(cooldownEnd);
     const now = Date.now() / 1000;
@@ -115,155 +209,98 @@ export async function reserveAccount(
     }
   }
 
-  // 6. Fetch random account
+  const adPolicy = await getAdPolicy();
   const serviceName = isPremium ? `${service}_premium` : `${service}_free`;
+  const skipAd = isPremium || isAdmin || !adPolicy.enabled || adPolicy.durationSeconds === 0;
 
-  const randomAccounts = await db.$queryRaw<Array<{ id: number; combo: string }>>`
-    SELECT id, combo FROM "Account" WHERE service_name = ${serviceName.toLowerCase()} ORDER BY RANDOM() LIMIT 1
-  `;
+  try {
+    return await db.$transaction(async (tx) => {
+      await tx.pendingGeneration.deleteMany({ where: { expires_at: { lt: new Date() } } });
 
-  if (randomAccounts.length === 0) {
-    return { success: false, error: "No stock left for this service." };
-  }
+      const account = await pickAvailableAccount(tx, serviceName);
+      if (!account) {
+        return { success: false, error: "No stock left for this service." };
+      }
 
-  const account = randomAccounts[0];
+      if (skipAd) {
+        await completeGeneration(tx, user, account, service, isPremium, userRoles);
+        logger.info("generation.completed", { userId, service, isPremium, skippedAd: true });
+        return { success: true, account: account.combo, requiresAd: false };
+      }
 
-  // Premium/admin users get account immediately, no ad
-  const skipAd = isPremium || isAdmin;
+      const token = randomUUID();
+      const claimableAt = new Date(Date.now() + adPolicy.durationSeconds * 1000);
+      const expiresAt = new Date(Date.now() + Math.max(5 * 60, adPolicy.durationSeconds + 60) * 1000);
 
-  if (skipAd) {
-    // Complete the generation immediately in a transaction
-    const now = Date.now() / 1000;
-    const roleCooldown = getRoleCooldown(userRoles, isPremium);
-    const customCooldownData = parseCooldown(user.custom_cooldown);
-    const customCooldown = customCooldownData[tier];
-    const cooldownSeconds = customCooldown != null ? Number(customCooldown) : roleCooldown;
-
-    const updatedCooldown: CooldownMap = {
-      ...parseCooldown(user.user_cooldown),
-      [tier]: String(Math.floor(now + cooldownSeconds)),
-    };
-
-    await db.$transaction([
-      db.account.delete({ where: { id: account.id } }),
-      db.generationHistory.create({
+      await tx.pendingGeneration.create({
         data: {
+          token,
           user_id: userId,
           service_name: service,
-          combo: account.combo,
+          account_id: account.id,
           is_premium: isPremium,
+          claimable_at: claimableAt,
+          expires_at: expiresAt,
         },
-      }),
-      db.user.update({
-        where: { user_id: userId },
-        data: {
-          amount_genned: isPremium ? user.amount_genned : user.amount_genned + 1,
-          prem_amount_genned: isPremium ? user.prem_amount_genned + 1 : user.prem_amount_genned,
-          last_time_genned: String(now),
-          user_cooldown: updatedCooldown,
-        },
-      }),
-    ]);
+      });
 
-    return { success: true, account: account.combo, requiresAd: false };
+      logger.info("generation.reserved", { userId, service, accountId: account.id });
+      return { success: true, token, requiresAd: true, claimableAt: claimableAt.toISOString() };
+    });
+  } catch (error) {
+    logger.error("generation.reserve_failed", { userId, service, error: error instanceof Error ? error.message : "unknown" });
+    return { success: false, error: "Unable to reserve stock. Please try again." };
   }
-
-  // Free user: reserve the account and return a token
-  const token = randomUUID();
-  const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 min TTL
-
-  await db.pendingGeneration.create({
-    data: {
-      token,
-      user_id: userId,
-      service_name: service,
-      account_id: account.id,
-      is_premium: isPremium,
-      expires_at: expiresAt,
-    },
-  });
-
-  return { success: true, token, requiresAd: true };
 }
 
-/**
- * Claim a reserved account after watching an ad.
- */
 export async function claimAccount(
-  token: string
-): Promise<{ success: boolean; error?: string; account?: string }> {
-  const pending = await db.pendingGeneration.findUnique({
-    where: { token },
-  });
+  token: string,
+  userId: string,
+  userRoles: string[]
+): Promise<{ success: boolean; error?: string; account?: string; retryAfter?: number }> {
+  try {
+    return await db.$transaction(async (tx) => {
+      const pending = await tx.pendingGeneration.findUnique({ where: { token } });
 
-  if (!pending) {
-    return { success: false, error: "Invalid or expired claim token." };
+      if (!pending || pending.user_id !== userId) {
+        return { success: false, error: "Invalid or expired claim token." };
+      }
+
+      const now = new Date();
+      if (now > pending.expires_at) {
+        await tx.pendingGeneration.delete({ where: { token } });
+        return { success: false, error: "Claim token has expired. Please try again." };
+      }
+
+      if (now < pending.claimable_at) {
+        return {
+          success: false,
+          error: "Ad watch time has not completed yet.",
+          retryAfter: Math.ceil((pending.claimable_at.getTime() - now.getTime()) / 1000),
+        };
+      }
+
+      const account = await tx.account.findUnique({ where: { id: pending.account_id } });
+      if (!account) {
+        await tx.pendingGeneration.delete({ where: { token } });
+        return { success: false, error: "Reserved account no longer available. Please try again." };
+      }
+
+      const user = await tx.user.findUnique({ where: { user_id: pending.user_id } });
+      if (!user || user.is_blacklisted) {
+        return { success: false, error: "User is not allowed to claim this account." };
+      }
+
+      await completeGeneration(tx, user, account, pending.service_name, pending.is_premium, userRoles, token);
+      logger.info("generation.claimed", { userId, service: pending.service_name, accountId: account.id });
+      return { success: true, account: account.combo };
+    });
+  } catch (error) {
+    logger.error("generation.claim_failed", { userId, error: error instanceof Error ? error.message : "unknown" });
+    return { success: false, error: "Unable to claim account. Please try again." };
   }
-
-  if (new Date() > pending.expires_at) {
-    await db.pendingGeneration.delete({ where: { token } });
-    return { success: false, error: "Claim token has expired. Please try again." };
-  }
-
-  // Fetch the reserved account
-  const account = await db.account.findUnique({ where: { id: pending.account_id } });
-  if (!account) {
-    await db.pendingGeneration.delete({ where: { token } });
-    return { success: false, error: "Reserved account no longer available. Please try again." };
-  }
-
-  const user = await db.user.findUnique({ where: { user_id: pending.user_id } });
-  if (!user) {
-    return { success: false, error: "User not found." };
-  }
-
-  // Complete the generation in a transaction
-  const now = Date.now() / 1000;
-  const tier = pending.is_premium ? "Premium" : "Free";
-  const cooldownSeconds = getDefaultCooldown(pending.is_premium);
-
-  const updatedCooldown: CooldownMap = {
-    ...parseCooldown(user.user_cooldown),
-    [tier]: String(Math.floor(now + cooldownSeconds)),
-  };
-
-  await db.$transaction([
-    db.account.delete({ where: { id: account.id } }),
-    db.generationHistory.create({
-      data: {
-        user_id: pending.user_id,
-        service_name: pending.service_name,
-        combo: account.combo,
-        is_premium: pending.is_premium,
-      },
-    }),
-    db.user.update({
-      where: { user_id: pending.user_id },
-      data: {
-        amount_genned: pending.is_premium ? user.amount_genned : user.amount_genned + 1,
-        prem_amount_genned: pending.is_premium ? user.prem_amount_genned + 1 : user.prem_amount_genned,
-        last_time_genned: String(now),
-        user_cooldown: updatedCooldown,
-      },
-    }),
-    db.pendingGeneration.delete({ where: { token } }),
-    db.adImpression.create({
-      data: {
-        user_id: pending.user_id,
-        service_name: pending.service_name,
-        provider: "propeller",
-        zone_id: process.env.NEXT_PUBLIC_PROPELLER_ZONE_ID || null,
-        completed: true,
-      },
-    }),
-  ]);
-
-  return { success: true, account: account.combo };
 }
 
-/**
- * Clean up expired pending generations (call periodically)
- */
 export async function cleanupExpiredPending() {
   const result = await db.pendingGeneration.deleteMany({
     where: { expires_at: { lt: new Date() } },
@@ -286,6 +323,7 @@ export function maskCombo(combo: string): string {
   if (parts.length < 2) return combo.substring(0, 3) + "***";
   const email = parts[0];
   const pass = parts.slice(1).join(":");
-  const maskedEmail = email.length > 3 ? email.substring(0, 3) + "***@" + (email.split("@")[1] || "***") : "***";
+  const maskedEmail =
+    email.length > 3 ? email.substring(0, 3) + "***@" + (email.split("@")[1] || "***") : "***";
   return `${maskedEmail}:${"*".repeat(Math.min(pass.length, 8))}`;
 }

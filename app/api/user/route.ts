@@ -1,6 +1,16 @@
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { maskCombo } from "@/lib/gen-logic";
+import { getCached } from "@/lib/cache";
+import { logger } from "@/lib/log";
 import { NextResponse } from "next/server";
+
+function cooldownRemaining(raw: unknown, tier: "Free" | "Premium") {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return 0;
+  const value = (raw as Record<string, string | null>)[tier];
+  if (!value) return 0;
+  return Math.max(0, Math.ceil(parseFloat(value) - Date.now() / 1000));
+}
 
 export async function GET() {
   const session = await auth();
@@ -9,51 +19,73 @@ export async function GET() {
   }
 
   try {
-    let user = await db.user.findUnique({ where: { user_id: session.user.id } });
-    if (!user) {
-      user = await db.user.create({
-        data: {
-          user_id: session.user.id,
-          username: session.user.name,
-          avatar: session.user.image,
-        },
-      });
-    }
+    const user = await getCached(`user:${session.user.id}`, () =>
+      db.user.findUnique({
+        where: { user_id: session.user.id },
+      })
+    );
 
-    // Check active cooldowns
-    const now = Date.now() / 1000;
-    const cooldownData = user.user_cooldown as Record<string, string | null> | null;
-    const freeCooldownEnd = cooldownData?.Free ? parseFloat(cooldownData.Free) : 0;
-    const premiumCooldownEnd = cooldownData?.Premium ? parseFloat(cooldownData.Premium) : 0;
+    const [history, total, unreadWins] = await Promise.all([
+      getCached(`user:${session.user.id}:history:list`, () =>
+        db.generationHistory.findMany({
+          where: { user_id: session.user.id },
+          orderBy: { generated_at: "desc" },
+          take: 20,
+        })
+      ),
+      getCached(`user:${session.user.id}:history:count`, () =>
+        db.generationHistory.count({
+          where: { user_id: session.user.id },
+        })
+      ),
+      getCached(`user:wins:${session.user.id}`, () =>
+        db.giveawayWin.count({
+          where: { user_id: session.user.id, is_read: false },
+        })
+      ),
+    ]);
 
-    const freeCooldownRemaining = freeCooldownEnd > now ? Math.ceil(freeCooldownEnd - now) : 0;
-    const premiumCooldownRemaining = premiumCooldownEnd > now ? Math.ceil(premiumCooldownEnd - now) : 0;
-
-    // Check subscription
-    const hasSubscription =
-      user.subscription_stage === "Premium" &&
-      user.subscription_time_left &&
-      user.subscription_time_left > now;
+    const isPremium =
+      user?.subscription_stage === "Premium" &&
+      !!user.subscription_time_left &&
+      user.subscription_time_left > Date.now() / 1000;
 
     return NextResponse.json({
-      user: {
-        id: user.user_id,
-        username: user.username,
-        avatar: user.avatar,
-        amountGenned: user.amount_genned,
-        premAmountGenned: user.prem_amount_genned,
-        lastTimeGenned: user.last_time_genned,
-        isBlacklisted: user.is_blacklisted,
-        subscriptionStage: user.subscription_stage,
-        subscriptionTimeLeft: user.subscription_time_left,
-        hasSubscription,
-        freeCooldownRemaining,
-        premiumCooldownRemaining,
-        notes: user.notes,
-      },
+      user: user
+        ? {
+            id: user.user_id,
+            username: user.username,
+            avatar: user.avatar,
+            amountGenned: user.amount_genned || 0,
+            premAmountGenned: user.prem_amount_genned || 0,
+            totalAccounts: total,
+            lastTimeGenned: user.last_time_genned,
+            isBlacklisted: user.is_blacklisted,
+            subscriptionStage: isPremium ? "Premium" : "Free",
+            subscriptionTimeLeft: user.subscription_time_left,
+            hasSubscription: isPremium,
+            freeCooldownRemaining: cooldownRemaining(user.user_cooldown, "Free"),
+            premiumCooldownRemaining: cooldownRemaining(user.user_cooldown, "Premium"),
+            unreadWins,
+          }
+        : null,
+      history: history.map((h) => ({
+        id: h.id,
+        service: h.service_name,
+        combo: maskCombo(h.combo),
+        isPremium: h.is_premium,
+        source: h.source,
+        giveawayId: h.giveaway_id,
+        generatedAt: h.generated_at,
+      })),
+      total,
+      totalPages: Math.ceil(total / 20),
     });
   } catch (error) {
-    console.error("Error fetching user:", error);
+    logger.error("api.user.failed", {
+      userId: session.user.id,
+      error: error instanceof Error ? error.message : "unknown",
+    });
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

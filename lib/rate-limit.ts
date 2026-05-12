@@ -1,43 +1,51 @@
-const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
+import { db } from "./db";
+import { logger } from "./log";
 
 interface RateLimitOptions {
-  windowMs?: number; // time window in milliseconds
-  maxRequests?: number; // max requests per window
+  windowMs?: number;
+  maxRequests?: number;
 }
 
-const DEFAULT_WINDOW = 60_000; // 1 minute
+const DEFAULT_WINDOW = 60_000;
 const DEFAULT_MAX = 10;
 
-export function rateLimit(
+export async function rateLimit(
   key: string,
   opts: RateLimitOptions = {}
-): { allowed: boolean; remaining: number; resetAt: number } {
+): Promise<{ allowed: boolean; remaining: number; resetAt: number }> {
   const windowMs = opts.windowMs ?? DEFAULT_WINDOW;
   const maxRequests = opts.maxRequests ?? DEFAULT_MAX;
-  const now = Date.now();
+  const now = new Date();
+  const resetAt = new Date(now.getTime() + windowMs);
 
-  const entry = rateLimitMap.get(key);
+  await db.rateLimit.deleteMany({ where: { reset_at: { lt: now } } });
 
-  if (!entry || now > entry.resetAt) {
-    const resetAt = now + windowMs;
-    rateLimitMap.set(key, { count: 1, resetAt });
-    return { allowed: true, remaining: maxRequests - 1, resetAt };
-  }
+  try {
+    const entry = await db.rateLimit.upsert({
+      where: { key },
+      create: { key, count: 1, reset_at: resetAt },
+      update: { count: { increment: 1 } },
+    });
 
-  entry.count++;
-  if (entry.count > maxRequests) {
-    return { allowed: false, remaining: 0, resetAt: entry.resetAt };
-  }
-
-  return { allowed: true, remaining: maxRequests - entry.count, resetAt: entry.resetAt };
-}
-
-// Clean up old entries every 5 minutes
-if (typeof setInterval !== "undefined") {
-  setInterval(() => {
-    const now = Date.now();
-    for (const [key, entry] of rateLimitMap) {
-      if (now > entry.resetAt) rateLimitMap.delete(key);
+    if (entry.reset_at < now) {
+      const fresh = await db.rateLimit.update({
+        where: { key },
+        data: { count: 1, reset_at: resetAt },
+      });
+      return { allowed: true, remaining: maxRequests - 1, resetAt: fresh.reset_at.getTime() };
     }
-  }, 5 * 60_000);
+
+    if (entry.count > maxRequests) {
+      logger.warn("rate_limit.blocked", { key, resetAt: entry.reset_at.getTime() });
+      return { allowed: false, remaining: 0, resetAt: entry.reset_at.getTime() };
+    }
+
+    return { allowed: true, remaining: maxRequests - entry.count, resetAt: entry.reset_at.getTime() };
+  } catch (error) {
+    logger.error("rate_limit.failed", {
+      key,
+      error: error instanceof Error ? error.message : "unknown",
+    });
+    return { allowed: false, remaining: 0, resetAt: resetAt.getTime() };
+  }
 }

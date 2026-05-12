@@ -18,7 +18,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const pathname = usePathname();
 
   return (
-    <div className="flex gap-6">
+    <div className="flex flex-col gap-4 lg:flex-row lg:gap-6">
       {/* Sidebar */}
       <aside className="hidden lg:flex flex-col w-52 shrink-0 space-y-1">
         <h2 className="flex items-center gap-2 text-lg font-bold mb-4">
@@ -43,13 +43,13 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       </aside>
 
       {/* Mobile admin nav */}
-      <div className="lg:hidden flex flex-wrap gap-2 mb-4">
+      <div className="sticky top-16 z-30 -mx-4 flex gap-2 overflow-x-auto border-b bg-background/95 px-4 py-3 backdrop-blur lg:hidden">
         {adminLinks.map((link) => (
           <Link
             key={link.href}
             href={link.href}
             className={cn(
-              "flex items-center gap-1 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors hover:bg-accent border",
+              "flex shrink-0 items-center gap-1 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors hover:bg-accent",
               pathname === link.href
                 ? "bg-accent text-accent-foreground"
                 : "text-muted-foreground"

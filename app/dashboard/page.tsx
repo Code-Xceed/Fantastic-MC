@@ -1,13 +1,15 @@
 "use client";
 
+import Link from "next/link";
 import { useSession } from "next-auth/react";
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { buttonVariants } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { AdSlot } from "@/components/AdSlot";
-import { LoadingSpinner } from "@/components/LoadingSpinner";
 import { GiveawayWinPopup } from "@/components/GiveawayWinPopup";
+import { Skeleton } from "@/components/Skeleton";
 import { formatCooldown } from "@/lib/gen-logic";
 import {
   User,
@@ -24,6 +26,7 @@ interface UserData {
   avatar: string | null;
   amountGenned: number;
   premAmountGenned: number;
+  totalAccounts: number;
   lastTimeGenned: string | null;
   isBlacklisted: boolean;
   subscriptionStage: string;
@@ -63,7 +66,23 @@ export default function DashboardPage() {
   }, [session]);
 
   if (status === "loading") {
-    return <LoadingSpinner className="py-20" text="Loading dashboard..." />;
+    return (
+      <div className="space-y-6">
+        <div className="grid gap-4 lg:grid-cols-3">
+          {[1, 2, 3, 4, 5, 6].map((i) => (
+            <Skeleton key={i} lines={1} />
+          ))}
+        </div>
+        <div className="lg:col-span-2 grid gap-4 sm:grid-cols-2">
+          {[1, 2, 3, 4].map((i) => (
+            <Skeleton key={i} lines={1} />
+          ))}
+        </div>
+        <div className="lg:col-span-2">
+          <Skeleton lines={1} />
+        </div>
+      </div>
+    );
   }
 
   if (!session) {
@@ -107,7 +126,19 @@ export default function DashboardPage() {
       </Card>
 
       {/* Stats */}
-      <div className="lg:col-span-2 grid gap-4 sm:grid-cols-2">
+      <div className="lg:col-span-2 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <Card>
+          <CardContent className="flex items-center gap-4 p-4">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
+              <History className="h-5 w-5 text-primary" />
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">Total Accounts</p>
+              <p className="text-2xl font-bold">{userData?.totalAccounts || 0}</p>
+            </div>
+          </CardContent>
+        </Card>
+
         <Card>
           <CardContent className="flex items-center gap-4 p-4">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
@@ -170,9 +201,14 @@ export default function DashboardPage() {
       {/* Recent history */}
       <Card className="lg:col-span-2">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <History className="h-5 w-5" />
-            Recent Activity
+          <CardTitle className="flex items-center justify-between gap-3">
+            <span className="flex items-center gap-2">
+              <History className="h-5 w-5" />
+              Recent Activity
+            </span>
+            <Link href="/history" className={buttonVariants({ variant: "outline", size: "sm" })}>
+              View all
+            </Link>
           </CardTitle>
         </CardHeader>
         <CardContent>

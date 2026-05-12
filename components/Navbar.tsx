@@ -23,7 +23,7 @@ import {
   Menu,
   X,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 
 const navLinks = [
@@ -37,6 +37,22 @@ export function Navbar() {
   const { data: session } = useSession();
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [unreadWins, setUnreadWins] = useState(0);
+
+  // Fetch unread giveaway wins count
+  useEffect(() => {
+    if (session?.user?.id) {
+      const loadUnreadWins = () => {
+        fetch("/api/user/wins")
+          .then((r) => r.json())
+          .then((data) => setUnreadWins(data.wins?.length || 0))
+          .catch(() => {});
+      };
+      loadUnreadWins();
+      const timer = window.setInterval(loadUnreadWins, 30_000);
+      return () => window.clearInterval(timer);
+    }
+  }, [session]);
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/80 backdrop-blur-lg">
@@ -61,6 +77,11 @@ export function Navbar() {
               >
                 <link.icon className="h-4 w-4" />
                 {link.label}
+                {link.href === "/giveaways" && unreadWins > 0 && (
+                  <span className="ml-2 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-xs text-white font-bold">
+                    {unreadWins}
+                  </span>
+                )}
               </Link>
             ))}
             {session.isAdmin && (
@@ -163,6 +184,11 @@ export function Navbar() {
             >
               <link.icon className="h-4 w-4" />
               {link.label}
+              {link.href === "/giveaways" && unreadWins > 0 && (
+                <span className="ml-2 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-xs text-white font-bold">
+                  {unreadWins}
+                </span>
+              )}
             </Link>
           ))}
           {session.isAdmin && (

@@ -1,5 +1,7 @@
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { invalidateCache } from "@/lib/cache";
+import { logger } from "@/lib/log";
 import { NextResponse } from "next/server";
 
 export async function POST(req: Request) {
@@ -25,9 +27,11 @@ export async function POST(req: Request) {
       },
     });
 
+    invalidateCache("giveaways:active");
+
     return NextResponse.json({ giveaway });
   } catch (error) {
-    console.error("Error creating giveaway:", error);
+    logger.error("api.admin.giveaway.create_failed", { error: error instanceof Error ? error.message : "unknown" });
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
@@ -60,7 +64,7 @@ export async function GET() {
       })),
     });
   } catch (error) {
-    console.error("Error fetching giveaways:", error);
+    logger.error("api.admin.giveaways.failed", { error: error instanceof Error ? error.message : "unknown" });
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

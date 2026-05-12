@@ -1,5 +1,7 @@
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { invalidateUserCache } from "@/lib/cache";
+import { logger } from "@/lib/log";
 import { NextResponse } from "next/server";
 
 // GET /api/user/wins — fetch unread giveaway wins for notification popup
@@ -27,7 +29,10 @@ export async function GET() {
       })),
     });
   } catch (error) {
-    console.error("Error fetching wins:", error);
+    logger.error("api.user.wins.failed", {
+      userId: session.user.id,
+      error: error instanceof Error ? error.message : "unknown",
+    });
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
@@ -55,9 +60,14 @@ export async function POST(req: Request) {
       });
     }
 
+    invalidateUserCache(session.user.id);
+
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error("Error marking wins as read:", error);
+    logger.error("api.user.wins.mark_read_failed", {
+      userId: session.user.id,
+      error: error instanceof Error ? error.message : "unknown",
+    });
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
