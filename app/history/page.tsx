@@ -18,7 +18,6 @@ import {
   Check,
   Trophy,
   Zap,
-  Crown,
   Server,
   Clock,
 } from "lucide-react";

@@ -1,11 +1,12 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
 import { Float, Environment, ContactShadows, PresentationControls } from "@react-three/drei";
 import * as THREE from "three";
 
 // Reusable hook for smooth hover scaling
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function useSmoothHover(ref: any, hovered: boolean, baseScale: number = 1, hoverScale: number = 1.15) {
   useFrame((state, delta) => {
     if (ref.current) {
@@ -15,6 +16,7 @@ function useSmoothHover(ref: any, hovered: boolean, baseScale: number = 1, hover
   });
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function MinecraftBlock(props: any) {
   const meshRef = useRef<THREE.Mesh>(null);
   const [hovered, setHover] = useState(false);
@@ -51,6 +53,7 @@ function MinecraftBlock(props: any) {
   );
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function SpotifySphere(props: any) {
   const meshRef = useRef<THREE.Mesh>(null);
   const [hovered, setHover] = useState(false);
@@ -81,6 +84,7 @@ function SpotifySphere(props: any) {
   );
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function NetflixTorus(props: any) {
   const meshRef = useRef<THREE.Mesh>(null);
   const [hovered, setHover] = useState(false);
@@ -113,6 +117,7 @@ function NetflixTorus(props: any) {
   );
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function TechPyramid(props: any) {
   const meshRef = useRef<THREE.Mesh>(null);
   const [hovered, setHover] = useState(false);
@@ -157,26 +162,41 @@ function FloatingParticles() {
     }
   });
 
+  const [particles, setParticles] = useState<{ speed: number; position: [number, number, number]; scale: number; color: string; opacity: number }[]>([]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setParticles(Array.from({ length: 25 }).map(() => ({
+        speed: 0.5 + Math.random(),
+        position: [
+          (Math.random() - 0.5) * 16, 
+          (Math.random() - 0.5) * 10, 
+          -2 - Math.random() * 8
+        ] as [number, number, number],
+        scale: 0.05 + Math.random() * 0.1,
+        color: Math.random() > 0.6 ? "#22c55e" : (Math.random() > 0.3 ? "#8b5cf6" : "#4ade80"),
+        opacity: 0.3 + Math.random() * 0.3
+      })));
+    }, 0);
+    return () => clearTimeout(timer);
+  }, []);
+
   return (
     <group ref={groupRef}>
-      {Array.from({ length: 25 }).map((_, i) => (
+      {particles.map((p, i) => (
         <Float 
           key={i}
-          speed={0.5 + Math.random()} 
+          speed={p.speed} 
           rotationIntensity={1} 
           floatIntensity={1.5} 
-          position={[
-            (Math.random() - 0.5) * 16, 
-            (Math.random() - 0.5) * 10, 
-            -2 - Math.random() * 8
-          ]}
+          position={p.position}
         >
-          <mesh scale={0.05 + Math.random() * 0.1}>
+          <mesh scale={p.scale}>
             <icosahedronGeometry args={[1, 0]} />
             <meshBasicMaterial 
-              color={Math.random() > 0.6 ? "#22c55e" : (Math.random() > 0.3 ? "#8b5cf6" : "#4ade80")} 
+              color={p.color} 
               transparent 
-              opacity={0.3 + Math.random() * 0.3} 
+              opacity={p.opacity} 
               wireframe 
             />
           </mesh>

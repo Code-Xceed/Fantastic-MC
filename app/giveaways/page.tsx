@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { AdSlot } from "@/components/AdSlot";
 import { Skeleton } from "@/components/Skeleton";
 import { EmptyState } from "@/components/EmptyState";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { Gift, Clock, Users, Trophy, Sparkles, Server } from "lucide-react";
 import { toast } from "sonner";
@@ -62,9 +62,12 @@ export default function GiveawaysPage() {
   }, []);
 
   useEffect(() => {
-    setNowMs(Date.now());
     const timer = window.setInterval(() => setNowMs(Date.now()), 1000);
-    return () => window.clearInterval(timer);
+    const initial = window.setTimeout(() => setNowMs(Date.now()), 0);
+    return () => {
+      window.clearInterval(timer);
+      window.clearTimeout(initial);
+    };
   }, []);
 
   const handleEnter = async (giveawayId: number) => {
