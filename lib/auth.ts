@@ -14,12 +14,8 @@ declare module "next-auth" {
   }
 }
 
-// Ensure environment variables are mapped correctly for NextAuth v5
-process.env.AUTH_SECRET = process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET || "fallback_secret_for_build_12345678901234567890";
-process.env.AUTH_URL = process.env.AUTH_URL || process.env.NEXTAUTH_URL;
-
 export const { handlers, auth, signIn, signOut } = NextAuth({
-  secret: process.env.AUTH_SECRET,
+  secret: process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET || "fallback_secret_for_build_12345678901234567890",
   trustHost: true,
   providers: [
     Discord({
