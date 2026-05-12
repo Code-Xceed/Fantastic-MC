@@ -8,8 +8,15 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { toast } from "sonner";
-import { Package, Plus, Search, Trash2, Upload } from "lucide-react";
+import { Package, Plus, Search, Trash2, Upload, Server } from "lucide-react";
 
 interface ServiceInfo {
   name: string;
@@ -21,15 +28,22 @@ interface ServiceInfo {
 
 export default function AdminStockPage() {
   const [services, setServices] = useState<ServiceInfo[]>([]);
-  const [serviceName, setServiceName] = useState("");
-  const [displayName, setDisplayName] = useState("");
-  const [iconUrl, setIconUrl] = useState("");
+  
+  // Add Stock State
+  const [selectedService, setSelectedService] = useState("");
   const [combos, setCombos] = useState("");
   const [isPremium, setIsPremium] = useState(false);
   const [removeCapture, setRemoveCapture] = useState(true);
   const [adding, setAdding] = useState(false);
+  
+  // Create Service State
+  const [newServiceName, setNewServiceName] = useState("");
+  const [newDisplayName, setNewDisplayName] = useState("");
+  const [newIconUrl, setNewIconUrl] = useState("");
+  
+  // View State
   const [search, setSearch] = useState("");
-  const [tierFilter, setTierFilter] = useState<"all" | "free" | "premium" | "empty">("all");
+  const tierFilter = "all"; // Hardcoded to all since we show both free and premium side-by-side now
 
   const fetchServices = () => {
     fetch("/api/services")
@@ -41,8 +55,8 @@ export default function AdminStockPage() {
   useEffect(() => { fetchServices(); }, []);
 
   const handleAddStock = async () => {
-    if (!serviceName || !combos) {
-      toast.error("Service name and combos are required");
+    if (!selectedService || selectedService === "none" || !combos) {
+      toast.error("Please select a service and provide combos");
       return;
     }
 
@@ -53,7 +67,7 @@ export default function AdminStockPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          service: serviceName,
+          service: selectedService,
           combos: lines,
           isPremium,
           removeCapture,
@@ -77,7 +91,7 @@ export default function AdminStockPage() {
   };
 
   const handleClearStock = async (service: string, premium: boolean) => {
-    if (!confirm(`Clear all ${premium ? "premium" : "free"} stock for ${service}?`)) return;
+    if (!confirm(`Are you absolutely sure you want to clear ALL ${premium ? "premium" : "free"} stock for ${service}?`)) return;
 
     try {
       const res = await fetch("/api/admin/stock", {
@@ -100,8 +114,8 @@ export default function AdminStockPage() {
   };
 
   const handleCreateService = async () => {
-    if (!serviceName) {
-      toast.error("Service name is required");
+    if (!newServiceName) {
+      toast.error("Service identifier is required");
       return;
     }
 
@@ -109,7 +123,7 @@ export default function AdminStockPage() {
       const res = await fetch("/api/admin/services", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: serviceName, displayName: displayName || serviceName, iconUrl: iconUrl || null }),
+        body: JSON.stringify({ userId: newServiceName, displayName: newDisplayName || newServiceName, iconUrl: newIconUrl || null }),
       });
 
       const data = await res.json();
@@ -118,9 +132,10 @@ export default function AdminStockPage() {
         return;
       }
 
-      toast.success("Service created");
-      setDisplayName("");
-      setIconUrl("");
+      toast.success("Service created successfully!");
+      setNewServiceName("");
+      setNewDisplayName("");
+      setNewIconUrl("");
       fetchServices();
     } catch {
       toast.error("Something went wrong");
@@ -152,206 +167,225 @@ export default function AdminStockPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold flex items-center gap-2">
-        <Package className="h-6 w-6" />
-        Stock Management
-      </h1>
+      <div className="flex flex-col gap-2">
+        <h1 className="text-3xl font-extrabold flex items-center gap-3 tracking-tight">
+          <div className="bg-primary/10 p-2 rounded-xl">
+            <Package className="h-7 w-7 text-primary" />
+          </div>
+          Inventory Management
+        </h1>
+        <p className="text-muted-foreground ml-16">Monitor available accounts, purge testing data, and upload new combos.</p>
+      </div>
 
-      {/* Current stock */}
-      <Card>
-        <CardHeader>
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <CardTitle>Current Stock</CardTitle>
-            <div className="flex flex-wrap gap-2">
-              {(["all", "free", "premium", "empty"] as const).map((filter) => (
-                <Button
-                  key={filter}
-                  variant={tierFilter === filter ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setTierFilter(filter)}
-                >
-                  {filter.charAt(0).toUpperCase() + filter.slice(1)}
-                </Button>
-              ))}
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="relative max-w-md">
-            <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search services"
-              className="pl-9"
-            />
-          </div>
-          {filteredServices.length === 0 ? (
-            <div className="rounded-lg border border-dashed p-8 text-center">
-              <Package className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
-              <p className="font-medium">No stock rows match this view</p>
-              <p className="text-sm text-muted-foreground">Adjust the search or filter, or create a new service below.</p>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {filteredServices.map((svc) => (
-                <div key={svc.name} className="flex flex-col gap-3 rounded-lg border p-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <p className="font-medium">{svc.displayName}</p>
-                    <div className="flex gap-2 mt-1">
-                      <Badge variant="secondary">Free: {svc.freeStock}</Badge>
-                      <Badge>Premium: {svc.premiumStock}</Badge>
-                    </div>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleClearStock(svc.name, false)}
-                      disabled={svc.freeStock === 0}
-                    >
-                      <Trash2 className="h-3 w-3 mr-1" /> Free
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleClearStock(svc.name, true)}
-                      disabled={svc.premiumStock === 0}
-                    >
-                      <Trash2 className="h-3 w-3 mr-1" /> Premium
-                    </Button>
-                  </div>
+      <div className="grid gap-6 lg:grid-cols-2">
+        {/* Add stock */}
+        <Card className="border-border/40 bg-card/40 backdrop-blur-md shadow-sm h-fit">
+          <CardHeader className="border-b border-border/30 bg-muted/20 pb-4">
+            <CardTitle className="flex items-center gap-2">
+              <Plus className="h-5 w-5 text-primary" />
+              Add Stock
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-5 pt-6">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label>Select Service</Label>
+                <Select value={selectedService} onValueChange={(val) => setSelectedService(val || "")}>
+                  <SelectTrigger className="bg-background">
+                    <SelectValue placeholder="Choose a service..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {services.length === 0 ? (
+                      <SelectItem value="none" disabled>No services available</SelectItem>
+                    ) : (
+                      services.map((s) => (
+                        <SelectItem key={s.name} value={s.name}>
+                          {s.displayName}
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Stock Tier</Label>
+                <div className="flex gap-2">
+                  <Button
+                    variant={!isPremium ? "default" : "outline"}
+                    className="w-full shadow-sm"
+                    onClick={() => setIsPremium(false)}
+                  >
+                    Free
+                  </Button>
+                  <Button
+                    variant={isPremium ? "default" : "outline"}
+                    className="w-full shadow-sm"
+                    onClick={() => setIsPremium(true)}
+                  >
+                    Premium
+                  </Button>
                 </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      <Separator />
-
-      {/* Add stock */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Plus className="h-5 w-5" />
-            Add Stock
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label>Service Name</Label>
-              <Input
-                placeholder="e.g. minecraft"
-                value={serviceName}
-                onChange={(e) => setServiceName(e.target.value)}
-                list="service-names"
-              />
-              <datalist id="service-names">
-                {services.map((s) => (
-                  <option key={s.name} value={s.name} />
-                ))}
-              </datalist>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Tier</Label>
-              <div className="flex gap-2">
-                <Button
-                  variant={!isPremium ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setIsPremium(false)}
-                >
-                  Free
-                </Button>
-                <Button
-                  variant={isPremium ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setIsPremium(true)}
-                >
-                  Premium
-                </Button>
               </div>
             </div>
-          </div>
 
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label>Account Combos (one per line)</Label>
-              <label className="flex items-center gap-1 text-sm cursor-pointer text-muted-foreground hover:text-foreground">
-                <Upload className="h-4 w-4" />
-                Upload .txt
-                <input type="file" accept=".txt" className="hidden" onChange={handleFileUpload} />
-              </label>
-            </div>
-            <Textarea
-              placeholder="email1:password1&#10;email2:password2&#10;..."
-              value={combos}
-              onChange={(e) => setCombos(e.target.value)}
-              rows={8}
-              className="font-mono text-sm"
-            />
-          </div>
-
-          <div className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              id="removeCapture"
-              checked={removeCapture}
-              onChange={(e) => setRemoveCapture(e.target.checked)}
-              className="rounded"
-            />
-            <Label htmlFor="removeCapture" className="text-sm">
-              Strip capture data (text after |)
-            </Label>
-          </div>
-
-          <Button onClick={handleAddStock} disabled={adding || !serviceName || !combos}>
-            {adding ? "Adding..." : "Add Stock"}
-          </Button>
-        </CardContent>
-      </Card>
-
-      <Separator />
-
-      {/* Create new service */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Create New Service</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
-              <Label>Service Name (lowercase, no spaces)</Label>
-              <Input
-                placeholder="e.g. minecraft"
-                value={serviceName}
-                onChange={(e) => setServiceName(e.target.value.toLowerCase().replace(/\s/g, "_"))}
+              <div className="flex items-center justify-between">
+                <Label>Account Combos (one per line)</Label>
+                <label className="flex items-center gap-1.5 text-xs font-semibold cursor-pointer text-primary hover:text-primary/80 transition-colors bg-primary/10 px-2.5 py-1 rounded-md">
+                  <Upload className="h-3.5 w-3.5" />
+                  Upload .txt
+                  <input type="file" accept=".txt" className="hidden" onChange={handleFileUpload} />
+                </label>
+              </div>
+              <Textarea
+                placeholder="user1@email.com:pass1&#10;user2@email.com:pass2&#10;..."
+                value={combos}
+                onChange={(e) => setCombos(e.target.value)}
+                rows={8}
+                className="font-mono text-sm bg-background/50 resize-none"
               />
             </div>
-            <div className="space-y-2">
-              <Label>Display Name</Label>
-              <Input
-                placeholder="e.g. Minecraft Java"
-                value={displayName}
-                onChange={(e) => setDisplayName(e.target.value)}
+
+            <div className="flex items-center gap-2 p-3 bg-muted/30 rounded-lg border border-border/40">
+              <input
+                type="checkbox"
+                id="removeCapture"
+                checked={removeCapture}
+                onChange={(e) => setRemoveCapture(e.target.checked)}
+                className="rounded h-4 w-4 accent-primary"
               />
+              <Label htmlFor="removeCapture" className="text-sm font-medium cursor-pointer">
+                Strip capture data (removes text after | separator)
+              </Label>
             </div>
-            <div className="space-y-2 sm:col-span-2">
-              <Label>Icon URL</Label>
-              <Input
-                placeholder="https://example.com/icon.png"
-                value={iconUrl}
-                onChange={(e) => setIconUrl(e.target.value)}
-              />
-            </div>
-          </div>
-          <Button variant="outline" onClick={handleCreateService}>
-            Create Service
-          </Button>
-        </CardContent>
-      </Card>
+
+            <Button size="lg" className="w-full font-bold shadow-md" onClick={handleAddStock} disabled={adding || !selectedService || selectedService === "none" || !combos}>
+              {adding ? "Importing Stock..." : "Add to Inventory"}
+            </Button>
+          </CardContent>
+        </Card>
+
+        <div className="flex flex-col gap-6">
+          {/* Create new service */}
+          <Card className="border-border/40 bg-card/40 backdrop-blur-md shadow-sm h-fit">
+            <CardHeader className="border-b border-border/30 bg-muted/20 pb-4">
+              <CardTitle className="flex items-center gap-2">
+                <Server className="h-5 w-5 text-blue-500" />
+                Create New Service
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4 pt-6">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Service Identifier</Label>
+                  <Input
+                    placeholder="e.g. minecraft"
+                    value={newServiceName}
+                    className="bg-background"
+                    onChange={(e) => setNewServiceName(e.target.value.toLowerCase().replace(/\s/g, "_"))}
+                  />
+                  <p className="text-[10px] text-muted-foreground">Lowercase, no spaces. Used in DB.</p>
+                </div>
+                <div className="space-y-2">
+                  <Label>Display Name</Label>
+                  <Input
+                    placeholder="e.g. Minecraft Java"
+                    value={newDisplayName}
+                    className="bg-background"
+                    onChange={(e) => setNewDisplayName(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2 sm:col-span-2">
+                  <Label>Icon URL (Optional)</Label>
+                  <Input
+                    placeholder="https://example.com/icon.png"
+                    value={newIconUrl}
+                    className="bg-background"
+                    onChange={(e) => setNewIconUrl(e.target.value)}
+                  />
+                </div>
+              </div>
+              <Button variant="secondary" className="w-full font-semibold shadow-sm" onClick={handleCreateService} disabled={!newServiceName}>
+                Register Service
+              </Button>
+            </CardContent>
+          </Card>
+
+          {/* Current stock overview */}
+          <Card className="border-border/40 bg-card/40 backdrop-blur-md shadow-sm flex-1">
+            <CardHeader className="border-b border-border/30 bg-muted/20 pb-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <CardTitle>Inventory Overview</CardTitle>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4 pt-6">
+              <div className="relative">
+                <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search services..."
+                  className="pl-9 bg-background"
+                />
+              </div>
+              
+              <div className="max-h-[300px] overflow-y-auto pr-2 space-y-3 custom-scrollbar">
+                {filteredServices.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-border/50 p-8 text-center bg-muted/10">
+                    <Package className="mx-auto mb-3 h-8 w-8 text-muted-foreground/50" />
+                    <p className="font-medium text-sm">No services found</p>
+                  </div>
+                ) : (
+                  filteredServices.map((svc) => (
+                    <div key={svc.name} className="flex flex-col gap-3 rounded-xl border border-border/50 bg-background/50 p-4 hover:border-primary/30 transition-colors">
+                      <div className="flex items-center justify-between">
+                        <p className="font-bold text-lg">{svc.displayName}</p>
+                      </div>
+                      
+                      <div className="flex items-center gap-3">
+                        <div className="flex-1 bg-muted/30 p-2.5 rounded-lg border border-border/40 flex justify-between items-center">
+                          <div className="flex items-center gap-2">
+                            <Badge variant="secondary" className="bg-background">Free</Badge>
+                            <span className="font-mono font-bold text-sm">{svc.freeStock}</span>
+                          </div>
+                          <Button
+                            variant="destructive"
+                            size="icon"
+                            className="h-7 w-7 opacity-80 hover:opacity-100"
+                            onClick={() => handleClearStock(svc.name, false)}
+                            disabled={svc.freeStock === 0}
+                            title="Purge Free Stock"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                        
+                        <div className="flex-1 bg-primary/5 p-2.5 rounded-lg border border-primary/10 flex justify-between items-center">
+                          <div className="flex items-center gap-2">
+                            <Badge variant="default">Premium</Badge>
+                            <span className="font-mono font-bold text-sm text-primary">{svc.premiumStock}</span>
+                          </div>
+                          <Button
+                            variant="destructive"
+                            size="icon"
+                            className="h-7 w-7 opacity-80 hover:opacity-100"
+                            onClick={() => handleClearStock(svc.name, true)}
+                            disabled={svc.premiumStock === 0}
+                            title="Purge Premium Stock"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
     </div>
   );
 }
