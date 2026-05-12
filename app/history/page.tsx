@@ -8,6 +8,8 @@ import { Button } from "@/components/ui/button";
 import { AdSlot } from "@/components/AdSlot";
 import { ErrorState } from "@/components/ErrorState";
 import { Skeleton } from "@/components/Skeleton";
+import { motion } from "framer-motion";
+import { cn } from "@/lib/utils";
 import {
   History,
   ChevronLeft,
@@ -31,6 +33,19 @@ interface HistoryItem {
   giveawayId: number | null;
   generatedAt: string;
 }
+
+const containerVariants = {
+  hidden: { opacity: 0 },
+  show: {
+    opacity: 1,
+    transition: { staggerChildren: 0.05 },
+  },
+};
+
+const itemVariants = {
+  hidden: { opacity: 0, y: 15 },
+  show: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 300, damping: 24 } },
+};
 
 export default function HistoryPage() {
   const { data: session, status } = useSession();
@@ -63,7 +78,7 @@ export default function HistoryPage() {
   const copyToClipboard = (id: number, text: string) => {
     navigator.clipboard.writeText(text);
     setCopiedId(id);
-    toast.success("Copied to clipboard!");
+    toast.success("Copied to clipboard");
     setTimeout(() => setCopiedId(null), 2000);
   };
 
@@ -79,31 +94,27 @@ export default function HistoryPage() {
     if (diffMins < 60) return `${diffMins}m ago`;
     if (diffHours < 24) return `${diffHours}h ago`;
     if (diffDays < 7) return `${diffDays}d ago`;
-    return d.toLocaleDateString();
+    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
   };
 
   if (status === "loading") {
     return (
-      <div className="space-y-6">
+      <div className="space-y-6 pt-8 max-w-5xl mx-auto">
+        <Skeleton lines={2} className="w-64 h-16" />
         <div className="grid gap-4 sm:grid-cols-3">
-          {[1, 2, 3, 4, 5, 6].map((i) => (
-            <Skeleton key={i} lines={1} />
-          ))}
+          {[1, 2, 3].map((i) => <Skeleton key={i} lines={1} className="h-24 rounded-2xl" />)}
         </div>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {[1, 2, 3].map((i) => (
-            <Skeleton key={i} lines={1} />
-          ))}
-        </div>
+        <Skeleton lines={5} className="h-96 rounded-3xl" />
       </div>
     );
   }
 
   if (!session) {
     return (
-      <div className="flex flex-col items-center justify-center py-20 text-center">
-        <h1 className="text-2xl font-bold">Please login to view your history</h1>
-      </div>
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col items-center justify-center py-32 text-center">
+        <History className="h-12 w-12 text-muted-foreground mb-4 opacity-50" />
+        <h1 className="text-2xl font-bold tracking-tight">Authentication Required</h1>
+      </motion.div>
     );
   }
 
@@ -111,169 +122,146 @@ export default function HistoryPage() {
   const winCount = history.filter((h) => h.source === "giveaway").length;
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold flex items-center gap-2">
-          <History className="h-6 w-6" />
+    <motion.div initial="hidden" animate="show" variants={containerVariants} className="space-y-8 pt-4 pb-20 max-w-5xl mx-auto">
+      <motion.div variants={itemVariants} className="flex flex-col gap-2 bg-card/30 p-5 rounded-3xl border border-border/40 backdrop-blur-md">
+        <h1 className="text-2xl font-extrabold flex items-center gap-3 tracking-tight">
+          <div className="bg-primary/10 p-2 rounded-xl">
+            <History className="h-6 w-6 text-primary" />
+          </div>
           Generation History
         </h1>
-        <p className="text-muted-foreground mt-1">
-          All your generated and won accounts in one place.
+        <p className="text-muted-foreground ml-14">
+          All your generated and won accounts securely logged.
         </p>
-      </div>
+      </motion.div>
 
       {/* Stats */}
-      <div className="grid gap-3 sm:grid-cols-3">
-        <Card className="border-border/50">
-          <CardContent className="flex items-center gap-3 p-4">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10">
-              <Zap className="h-4 w-4 text-primary" />
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Total Accounts</p>
-              <p className="text-lg font-bold">{total}</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="border-border/50">
-          <CardContent className="flex items-center gap-3 p-4">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-500/10">
-              <Server className="h-4 w-4 text-blue-500" />
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Generated</p>
-              <p className="text-lg font-bold">{genCount}</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="border-border/50">
-          <CardContent className="flex items-center gap-3 p-4">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-yellow-500/10">
-              <Trophy className="h-4 w-4 text-yellow-500" />
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Giveaway Wins</p>
-              <p className="text-lg font-bold">{winCount}</p>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+      <motion.div variants={itemVariants} className="grid gap-4 sm:grid-cols-3">
+        {[
+          { label: "Total Accounts", value: total, icon: Zap, bg: "bg-primary/10", text: "text-primary" },
+          { label: "Direct Generations", value: genCount, icon: Server, bg: "bg-blue-500/10", text: "text-blue-500" },
+          { label: "Giveaway Wins", value: winCount, icon: Trophy, bg: "bg-amber-500/10", text: "text-amber-500" },
+        ].map((stat, i) => (
+          <Card key={i} className="border-border/40 bg-card/40 backdrop-blur-sm rounded-2xl hover:bg-card/60 transition-colors">
+            <CardContent className="flex items-center gap-4 p-5">
+              <div className={cn("flex h-12 w-12 shrink-0 items-center justify-center rounded-xl", stat.bg)}>
+                <stat.icon className={cn("h-6 w-6", stat.text)} />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-muted-foreground">{stat.label}</p>
+                <p className="text-2xl font-bold tracking-tight">{stat.value}</p>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </motion.div>
 
-      <AdSlot format="banner" />
+      <motion.div variants={itemVariants}>
+        <AdSlot format="banner" />
+      </motion.div>
 
       {error ? (
-        <ErrorState message="Failed to load history" onRetry={fetchHistory} />
+        <motion.div variants={itemVariants}>
+          <ErrorState message="Failed to load history data" onRetry={fetchHistory} />
+        </motion.div>
       ) : (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center justify-between">
-              <span>Your Accounts</span>
-              <Badge variant="secondary">{total} total</Badge>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {history.length === 0 ? (
-              <div className="flex flex-col items-center py-12 text-center">
-                <History className="h-12 w-12 text-muted-foreground/50 mb-3" />
-                <p className="text-sm text-muted-foreground">
-                  No accounts generated yet. Head to Services to get started!
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {history.map((h) => (
-                  <div
-                    key={h.id}
-                    className="flex items-center gap-3 rounded-lg border p-3 hover:bg-accent/50 transition-colors"
-                  >
-                    {/* Source icon */}
-                    <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
-                      h.source === "giveaway"
-                        ? "bg-yellow-500/10"
-                        : "bg-primary/10"
-                    }`}>
-                      {h.source === "giveaway" ? (
-                        <Trophy className="h-4 w-4 text-yellow-500" />
-                      ) : (
-                        <Zap className="h-4 w-4 text-primary" />
-                      )}
-                    </div>
-
-                    {/* Service + combo */}
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <p className="text-sm font-medium">{h.service}</p>
-                        <Badge variant={h.isPremium ? "default" : "secondary"} className="text-[10px] px-1.5">
-                          {h.isPremium ? (
-                            <><Crown className="mr-0.5 h-2.5 w-2.5" /> Premium</>
+        <motion.div variants={itemVariants}>
+          <Card className="border-border/40 bg-card/40 backdrop-blur-md rounded-3xl overflow-hidden shadow-sm">
+            <CardHeader className="border-b border-border/30 bg-muted/20 pb-4">
+              <CardTitle className="flex items-center justify-between text-lg font-bold">
+                Your Ledger
+                <Badge variant="secondary" className="font-mono bg-background shadow-sm border border-border/50">{total} items</Badge>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              {history.length === 0 ? (
+                <div className="flex flex-col items-center py-16 text-center">
+                  <History className="h-14 w-14 text-muted-foreground mb-4 opacity-20" />
+                  <p className="text-base font-medium text-muted-foreground">
+                    Your history is clean. Generate an account to start your ledger.
+                  </p>
+                </div>
+              ) : (
+                <div className="divide-y divide-border/30">
+                  {history.map((h) => (
+                    <motion.div
+                      key={h.id}
+                      initial={{ opacity: 0, x: -10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      className="flex flex-col sm:flex-row sm:items-center gap-4 p-5 hover:bg-muted/30 transition-colors group"
+                    >
+                      <div className="flex items-center gap-4 flex-1 min-w-0">
+                        <div className={cn(
+                          "flex h-12 w-12 shrink-0 items-center justify-center rounded-xl shadow-sm border border-border/30",
+                          h.source === "giveaway" ? "bg-amber-500/10 border-amber-500/20" : "bg-primary/5"
+                        )}>
+                          {h.source === "giveaway" ? (
+                            <Trophy className="h-5 w-5 text-amber-500" />
                           ) : (
-                            "Free"
+                            <Zap className="h-5 w-5 text-primary" />
                           )}
-                        </Badge>
-                        {h.source === "giveaway" && (
-                          <Badge variant="outline" className="text-[10px] px-1.5 border-yellow-500/30 text-yellow-600">
-                            <Trophy className="mr-0.5 h-2.5 w-2.5" /> Won
-                          </Badge>
-                        )}
+                        </div>
+
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            <p className="text-base font-bold tracking-tight">{h.service}</p>
+                            <Badge variant={h.isPremium ? "default" : "secondary"} className="text-[10px] px-1.5 h-4 uppercase font-bold tracking-wider">
+                              {h.isPremium ? "Premium" : "Free"}
+                            </Badge>
+                            {h.source === "giveaway" && (
+                              <Badge variant="outline" className="text-[10px] px-1.5 h-4 border-amber-500/30 text-amber-500 bg-amber-500/5">
+                                <Trophy className="mr-1 h-2.5 w-2.5" /> Won
+                              </Badge>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <p className="text-sm font-mono text-muted-foreground bg-background/50 inline-block px-2 py-0.5 rounded border border-border/50 truncate max-w-[200px] sm:max-w-xs">
+                              {h.combo}
+                            </p>
+                          </div>
+                        </div>
                       </div>
-                      <p className="text-xs text-muted-foreground font-mono truncate mt-0.5">
-                        {h.combo}
-                      </p>
-                    </div>
 
-                    {/* Time + copy */}
-                    <div className="flex items-center gap-2 shrink-0">
-                      <span className="text-xs text-muted-foreground flex items-center gap-1">
-                        <Clock className="h-3 w-3" />
-                        {formatTime(h.generatedAt)}
-                      </span>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7"
-                        onClick={() => copyToClipboard(h.id, h.combo)}
-                      >
-                        {copiedId === h.id ? (
-                          <Check className="h-3.5 w-3.5 text-green-500" />
-                        ) : (
-                          <Copy className="h-3.5 w-3.5" />
-                        )}
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+                      <div className="flex items-center justify-between sm:justify-end gap-4 shrink-0 pl-16 sm:pl-0">
+                        <span className="text-xs font-medium text-muted-foreground flex items-center gap-1.5 bg-background/40 px-2 py-1 rounded-md border border-border/40">
+                          <Clock className="h-3.5 w-3.5" />
+                          {formatTime(h.generatedAt)}
+                        </span>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          className={cn("h-8 rounded-lg shadow-sm transition-all", copiedId === h.id ? "bg-green-500/20 text-green-500 hover:bg-green-500/30" : "opacity-0 group-hover:opacity-100")}
+                          onClick={() => copyToClipboard(h.id, h.combo)}
+                        >
+                          {copiedId === h.id ? (
+                            <><Check className="h-4 w-4 mr-1.5" /> Copied</>
+                          ) : (
+                            <><Copy className="h-4 w-4 mr-1.5" /> Copy</>
+                          )}
+                        </Button>
+                      </div>
+                    </motion.div>
+                  ))}
+                </div>
+              )}
 
-            {/* Pagination */}
-            {totalPages > 1 && (
-              <div className="flex items-center justify-center gap-3 mt-6">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={page <= 1}
-                  onClick={() => setPage(page - 1)}
-                >
-                  <ChevronLeft className="h-4 w-4 mr-1" />
-                  Previous
-                </Button>
-                <span className="text-sm text-muted-foreground">
-                  Page {page} of {totalPages}
-                </span>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={page >= totalPages}
-                  onClick={() => setPage(page + 1)}
-                >
-                  Next
-                  <ChevronRight className="h-4 w-4 ml-1" />
-                </Button>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+              {totalPages > 1 && (
+                <div className="flex items-center justify-between px-6 py-4 bg-muted/10 border-t border-border/30">
+                  <Button variant="outline" size="sm" className="rounded-full shadow-sm" disabled={page <= 1} onClick={() => setPage(page - 1)}>
+                    <ChevronLeft className="h-4 w-4 mr-1" /> Prev
+                  </Button>
+                  <span className="text-xs font-medium text-muted-foreground bg-background px-3 py-1 rounded-full border border-border/50">
+                    {page} / {totalPages}
+                  </span>
+                  <Button variant="outline" size="sm" className="rounded-full shadow-sm" disabled={page >= totalPages} onClick={() => setPage(page + 1)}>
+                    Next <ChevronRight className="h-4 w-4 ml-1" />
+                  </Button>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </motion.div>
       )}
-    </div>
+    </motion.div>
   );
 }

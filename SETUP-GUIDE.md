@@ -23,7 +23,7 @@ Complete guide to setting up, deploying, and operating the FMC Gen website from 
 
 1. Go to [Discord Developer Portal](https://discord.com/developers/applications)
 2. Click **New Application** → name it `FMC Gen` (or your preferred name)
-3. Note down the **Application ID** — this is your `DISCORD_CLIENT_ID`
+3. Note down the **Application ID** — this is your `DISCORD_CLIENT_ID` 
 
 ### Step 2: Configure OAuth2
 
@@ -49,13 +49,12 @@ Complete guide to setting up, deploying, and operating the FMC Gen website from 
 
 1. Go to **OAuth2** → **URL Generator**
 2. Under **Scopes**, select: `bot`
-3. Under **Bot Permissions**, select:
-   - ✅ Read Members (this is the key one — the bot needs to read member roles)
+3. You can leave **Bot Permissions** unchecked (the bot only needs the **Server Members Intent** from Step 3 to read user roles).
 4. Copy the generated URL at the bottom
 5. Open it in your browser and invite the bot to your Discord server
 
 ### Step 5: Get Your Server ID and Role IDs
-
+   
 1. Open Discord → Settings → Advanced → enable **Developer Mode**
 2. Right-click your Discord server name → **Copy Server ID** → this is your `DISCORD_GUILD_ID`
 3. Right-click the admin role in your server → **Copy Role ID**
