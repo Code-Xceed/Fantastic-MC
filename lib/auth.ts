@@ -29,7 +29,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     signIn: "/",
   },
   callbacks: {
-    async signIn({ user }) {
+    async signIn({ user, profile }) {
       const guildId = process.env.DISCORD_GUILD_ID;
       const botToken = process.env.DISCORD_BOT_TOKEN;
 
@@ -38,9 +38,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         return false;
       }
 
+      // NextAuth v5 sometimes generates UUIDs for user.id. We must use the raw Discord profile.id.
+      const discordUserId = profile?.id || user.id;
+
       try {
         const res = await fetch(
-          `https://discord.com/api/guilds/${guildId}/members/${user.id}`,
+          `https://discord.com/api/guilds/${guildId}/members/${discordUserId}`,
           {
             headers: { Authorization: `Bot ${botToken}` },
           }
